@@ -73,6 +73,17 @@ services:
       # Removido o healthcheck para simplificar, mas pode ser adicionado de volta.
       - server-1
 
+  blockchain-node:
+      build:
+        context: ./blockchain
+        dockerfile: Dockerfile
+      container_name: pbl_blockchain
+      networks:
+        - game-net
+      ports:
+        - "8545:8545" # RPC HTTP
+        - "30303:30303" # P2P (opcional para nó único)
+
 # Define a rede personalizada que permite a comunicação entre os serviços
 networks:
   game-net:
