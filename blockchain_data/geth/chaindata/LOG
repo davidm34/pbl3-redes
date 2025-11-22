@@ -1,0 +1,32 @@
+=============== Nov 22, 2025 (UTC) ===============
+13:29:29.731828 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:29:29.784084 db@open opening
+13:29:29.807635 version@stat F·[] S·0B[] Sc·[]
+13:29:29.818915 db@janitor F·2 G·0
+13:29:29.819763 db@open done T·35.140891ms
+13:29:29.970776 db@close closing
+13:29:29.972644 db@close done T·1.862904ms
+=============== Nov 22, 2025 (UTC) ===============
+13:29:30.275610 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:29:30.285570 version@stat F·[] S·0B[] Sc·[]
+13:29:30.286503 db@open opening
+13:29:30.289121 journal@recovery F·1
+13:29:30.412779 journal@recovery recovering @1
+13:29:30.425977 memdb@flush created L0@2 N·13 S·897B "HD\xfb..\xb5\xb1L,v6":"\xb3\xdc\xda..\xf7\x92\\,v2"
+13:29:30.544253 version@stat F·[1] S·897B[897B] Sc·[0.25]
+13:29:30.591177 db@janitor F·3 G·0
+13:29:30.591574 db@open done T·304.807534ms
+13:31:07.414519 db@close closing
+13:31:07.453200 db@close done T·38.753156ms
+=============== Nov 22, 2025 (UTC) ===============
+16:20:16.180043 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:20:16.215320 version@stat F·[1] S·897B[897B] Sc·[0.25]
+16:20:16.216068 db@open opening
+16:20:16.217980 journal@recovery F·1
+16:20:16.227384 journal@recovery recovering @3
+16:20:16.268140 memdb@flush created L0@5 N·12 S·644B "Dat..ion,v16":"unc..own,v23"
+16:20:16.274997 version@stat F·[2] S·1KiB[1KiB] Sc·[0.50]
+16:20:16.357861 db@janitor F·4 G·0
+16:20:16.358562 db@open done T·142.262199ms
+16:23:42.264855 db@close closing
+16:23:42.271829 db@close done T·6.976642ms

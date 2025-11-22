@@ -83,6 +83,8 @@ services:
       ports:
         - "8545:8545" # RPC HTTP
         - "30303:30303" # P2P (opcional para nó único)
+      volumes:
+      - ./blockchain_data:/root/.ethereum
 
 # Define a rede personalizada que permite a comunicação entre os serviços
 networks:

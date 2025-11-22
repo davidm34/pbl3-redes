@@ -1,0 +1,20 @@
+=============== Nov 22, 2025 (UTC) ===============
+13:29:30.852317 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:29:30.879539 db@open opening
+13:29:30.910423 version@stat F·[] S·0B[] Sc·[]
+13:29:30.919031 db@janitor F·2 G·0
+13:29:30.919651 db@open done T·39.727872ms
+13:31:07.608118 db@close closing
+13:31:07.651418 db@close done T·43.294606ms
+=============== Nov 22, 2025 (UTC) ===============
+16:20:16.798037 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:20:16.821551 version@stat F·[] S·0B[] Sc·[]
+16:20:16.822455 db@open opening
+16:20:16.825068 journal@recovery F·1
+16:20:16.831510 journal@recovery recovering @1
+16:20:16.864908 memdb@flush created L0@2 N·425 S·13KiB "loc..seq,v2":"version,v1"
+16:20:16.881180 version@stat F·[1] S·13KiB[13KiB] Sc·[0.25]
+16:20:16.949641 db@janitor F·3 G·0
+16:20:16.949990 db@open done T·127.268849ms
+16:23:42.543806 db@close closing
+16:23:42.548725 db@close done T·4.916679ms
