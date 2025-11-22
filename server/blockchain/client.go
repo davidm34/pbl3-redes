@@ -24,42 +24,55 @@ type Client struct {
 	address   common.Address     // Endereço do Contrato
 }
 
-// NewClient inicializa a conexão com o Blockchain
+// NewClient inicializa a conexão com o Blockchain com tentativas de reconexão
 func NewClient(nodeURL string, contractAddrHex string, privateKeyHex string) (*Client, error) {
-	// 1. Conectar ao Nó Ethereum (Geth)
-	client, err := ethclient.Dial(nodeURL)
-	if err != nil {
-		return nil, fmt.Errorf("falha ao conectar ao nó Ethereum em %s: %v", nodeURL, err)
+	var client *ethclient.Client
+	var err error
+
+	// Tenta conectar por 60 segundos (esperando o Geth subir e gerar o DAG)
+	log.Printf("[BLOCKCHAIN] Tentando conectar ao nó em %s...", nodeURL)
+	for i := 0; i < 12; i++ {
+		client, err = ethclient.Dial(nodeURL)
+		if err == nil {
+			// Tenta fazer uma chamada simples para garantir que o nó está pronto (ex: ChainID)
+			_, err = client.ChainID(context.Background())
+			if err == nil {
+				break // Sucesso total!
+			}
+		}
+		log.Printf("[BLOCKCHAIN] Nó indisponível (%v). Tentando novamente em 5s...", err)
+		time.Sleep(5 * time.Second)
 	}
 
-	// 2. Configurar a "Carteira" (Signer) para assinar transações
-	// Remove o prefixo "0x" se existir
+	if err != nil {
+		return nil, fmt.Errorf("falha ao conectar ao nó Ethereum após várias tentativas: %v", err)
+	}
+
+	// 2. Configurar a "Carteira" (Signer)
 	privateKeyHex = strings.TrimPrefix(privateKeyHex, "0x")
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("chave privada inválida: %v", err)
 	}
 
-	// Obtém o ID da rede (ChainID) para garantir que estamos na rede certa (1337)
 	chainID, err := client.ChainID(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("falha ao obter chainID: %v", err)
 	}
 
-	// Cria o objeto de autorização
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("falha ao criar transactor: %v", err)
 	}
 
-	// 3. Carregar a Instância do Contrato usando o arquivo gerado (pack_registry.go)
+	// 3. Carregar a Instância do Contrato
 	address := common.HexToAddress(contractAddrHex)
 	instance, err := contracts.NewPackRegistry(address, client)
 	if err != nil {
 		return nil, fmt.Errorf("falha ao carregar contrato PackRegistry: %v", err)
 	}
 
-	log.Printf("[BLOCKCHAIN] Conectado ao contrato em %s", contractAddrHex)
+	log.Printf("[BLOCKCHAIN] Conectado com sucesso! Contrato: %s (ChainID: %v)", contractAddrHex, chainID)
 
 	return &Client{
 		ethClient: client,

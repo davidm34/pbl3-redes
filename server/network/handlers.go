@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
-	"strconv"
 	"time"
 
+	"pingpong/server/blockchain"
 	"pingpong/server/protocol"
 	"pingpong/server/pubsub"
 	"pingpong/server/state"
@@ -18,18 +17,21 @@ type TCPServer struct {
 	listenAddr   string
 	stateManager *state.StateManager
 	broker       *pubsub.Broker
+	blockchain   *blockchain.Client // NOVO: Cliente Blockchain injetado
 }
 
 // NewTCPServer cria uma nova instância do servidor TCP, injetando as dependências.
-func NewTCPServer(addr string, sm *state.StateManager, broker *pubsub.Broker) *TCPServer {
+// ATUALIZADO: Agora recebe o cliente blockchain
+func NewTCPServer(addr string, sm *state.StateManager, broker *pubsub.Broker, bc *blockchain.Client) *TCPServer {
 	return &TCPServer{
 		listenAddr:   addr,
 		stateManager: sm,
 		broker:       broker,
+		blockchain:   bc,
 	}
 }
 
-// Listen inicia o listener TCP e aceita novas conexões, delegando-as ao client_manager.
+// Listen inicia o listener TCP.
 func (s *TCPServer) Listen() error {
 	ln, err := net.Listen("tcp", s.listenAddr)
 	if err != nil {
@@ -46,7 +48,6 @@ func (s *TCPServer) Listen() error {
 			log.Printf("[NETWORK] Erro ao aceitar nova conexão: %v", err)
 			continue
 		}
-		// Para cada nova conexão, inicia o gestor de ciclo de vida do cliente.
 		go s.handleConn(conn)
 	}
 }
@@ -56,34 +57,34 @@ func (s *TCPServer) listenForClientMessages() {
 	sub := s.broker.Subscribe("client.messages")
 	for msg := range sub {
 		if action, ok := msg.Payload.(protocol.ClientAction); ok {
-			log.Printf("[HANDLER] <- %s: %s", action.Player.ID, action.Msg.T)
+			// log.Printf("[HANDLER] <- %s: %s", action.Player.ID, action.Msg.T) // Log verbose opcional
 			s.handleMessage(action.Player, action.Msg)
 		}
 	}
 }
 
-// sendToPlayer publica uma mensagem para o tópico de um jogador específico no broker.
+// sendToPlayer publica uma mensagem para o tópico de um jogador específico.
 func (s *TCPServer) sendToPlayer(playerID string, msg protocol.ServerMsg) {
 	s.broker.Publish(fmt.Sprintf("player.%s", playerID), msg)
 }
 
-// handleMessage é o roteador que direciona as mensagens para a função correta.
+// handleMessage é o roteador de mensagens.
 func (s *TCPServer) handleMessage(player *protocol.PlayerConn, msg *protocol.ClientMsg) {
 	switch msg.T {
 	case protocol.FIND_MATCH:
-		s.handleFindMatch(player) // jogador entrou na fila para encontrar uma partida
+		s.handleFindMatch(player)
 	case protocol.PLAY:
-		s.handlePlay(player, msg.CardID) // O jogador jogou uma carta numa partida
+		s.handlePlay(player, msg.CardID)
 	case protocol.CHAT:
-		s.handleChat(player, msg.Text) // O jogador enviou uma mensagem de chat.
+		s.handleChat(player, msg.Text)
 	case protocol.PING:
-		s.handlePing(player, msg.TS) // O cliente enviou uma mensagem PING para medir a latência.
+		s.handlePing(player, msg.TS)
 	case protocol.OPEN_PACK:
-		s.handleOpenPack(player) // O jogador quer abrir um pacote de cartas.
+		s.handleOpenPack(player) // Lógica alterada para Blockchain
 	case protocol.AUTOPLAY:
-		s.handleAutoPlay(player, true) // O jogador ativou o autoplay.
+		s.handleAutoPlay(player, true)
 	case protocol.NOAUTOPLAY:
-		s.handleAutoPlay(player, false) // O jogador desativou o autoplay.
+		s.handleAutoPlay(player, false)
 	default:
 		s.sendToPlayer(player.ID, protocol.ServerMsg{
 			T:    protocol.ERROR,
@@ -93,12 +94,12 @@ func (s *TCPServer) handleMessage(player *protocol.PlayerConn, msg *protocol.Cli
 	}
 }
 
-// --- Handlers Específicos para cada Tipo de Mensagem ---
+// --- Handlers Específicos ---
 
 func (s *TCPServer) handleFindMatch(player *protocol.PlayerConn) {
 	s.stateManager.AddPlayerToQueue(player)
 	s.sendToPlayer(player.ID, protocol.ServerMsg{
-		T:    protocol.ERROR,
+		T:    protocol.ERROR, // Nota: O cliente usa ERROR com Code QUEUED para notificação, mantido legado
 		Code: "QUEUED",
 		Msg:  "Você entrou na fila de matchmaking.",
 	})
@@ -149,64 +150,54 @@ func (s *TCPServer) handlePing(player *protocol.PlayerConn, ts int64) {
 }
 
 func (s *TCPServer) handleOpenPack(player *protocol.PlayerConn) {
-	// 1. Criar um canal para receber o resultado de forma assíncrona.
-	replyChan := make(chan state.PackResult, 1)
+	log.Printf("[HANDLER] %s solicitou abrir um pacote. Iniciando transação na Blockchain...", player.ID)
 
-	// 2. Criar e enfileirar o pedido.
-	request := &state.PackRequest{
-		PlayerID:  player.ID,
-		ReplyChan: replyChan,
-	}
-	s.stateManager.EnqueuePackRequest(request)
-
-	// 3. Obter timeout configurável (padrão: 10 segundos)
-	timeout := getPackRequestTimeout()
-
-	// 4. Aguardar pelo resultado com um timeout.
-	select {
-	case result := <-replyChan:
-		// O resultado chegou do processador do token.
-		if result.Err != nil {
-			s.sendToPlayer(player.ID, protocol.ServerMsg{
-				T:    protocol.ERROR,
-				Code: protocol.OUT_OF_STOCK, // Ou outro código de erro relevante
-				Msg:  result.Err.Error(),
-			})
-		} else {
-			s.sendToPlayer(player.ID, protocol.ServerMsg{
-				T:     protocol.PACK_OPENED,
-				Cards: result.Cards,
-				// O stock atualizado virá no processamento do token.
-				// Podemos omiti-lo aqui ou obter do resultado se o incluirmos.
-			})
-			log.Printf("[HANDLER] %s abriu um pacote (processado via token): %v", player.ID, result.Cards)
-		}
-	case <-time.After(timeout):
-		// Timeout - o token pode estar demorando muito ou perdido.
+	// 1. Envia a transação para decrementar o stock no contrato inteligente
+	txHash, err := s.blockchain.DecrementStock()
+	if err != nil {
+		log.Printf("[HANDLER] Erro ao enviar transação para %s: %v", player.ID, err)
 		s.sendToPlayer(player.ID, protocol.ServerMsg{
 			T:    protocol.ERROR,
-			Code: "REQUEST_TIMEOUT",
-			Msg:  "O pedido para abrir o pacote demorou demasiado a ser processado.",
+			Code: protocol.INTERNAL,
+			Msg:  "Erro ao comunicar com a Blockchain. Tente novamente.",
 		})
-		log.Printf("[HANDLER] Timeout ao aguardar resultado do pacote para %s (timeout: %v)", player.ID, timeout)
-	}
-}
-
-// getPackRequestTimeout retorna o timeout configurado para pedidos de pacotes.
-// Pode ser configurado via variável de ambiente PACK_REQUEST_TIMEOUT_SEC (padrão: 10 segundos).
-func getPackRequestTimeout() time.Duration {
-	timeoutStr := os.Getenv("PACK_REQUEST_TIMEOUT_SEC")
-	if timeoutStr == "" {
-		return 10 * time.Second
+		return
 	}
 
-	timeoutSec, err := strconv.Atoi(timeoutStr)
-	if err != nil || timeoutSec <= 0 {
-		log.Printf("[HANDLER] Valor inválido para PACK_REQUEST_TIMEOUT_SEC: %s, usando padrão de 10s", timeoutStr)
-		return 10 * time.Second
-	}
+	// Notifica o jogador que o processo iniciou (opcional, UX)
+	log.Printf("[HANDLER] Transação enviada: %s. Aguardando mineração...", txHash)
 
-	return time.Duration(timeoutSec) * time.Second
+	// 2. Aguarda a confirmação da transação (Mineração do bloco)
+	// Isso bloqueia a goroutine, mas como cada cliente tem sua conexão ou o handler roda em rotina separada, ok.
+	// Idealmente, faríamos isso em background para não travar o processamento de outras mensagens deste jogador.
+	go func() {
+		err := s.blockchain.WaitForTransactionReceipt(txHash)
+		if err != nil {
+			log.Printf("[HANDLER] Transação falhou ou timeout para %s: %v", player.ID, err)
+			s.sendToPlayer(player.ID, protocol.ServerMsg{
+				T:    protocol.ERROR,
+				Code: "TX_FAILED",
+				Msg:  "A transação na blockchain falhou. O pacote não foi aberto.",
+			})
+			return
+		}
+
+		log.Printf("[HANDLER] Transação confirmada na blockchain! Gerando cartas para %s.", player.ID)
+
+		// 3. Gera as cartas (Stock já foi decrementado na rede)
+		// Usamos o PackSystem do StateManager apenas para gerar as cartas, ignorando o stock local dele.
+		cards := s.stateManager.PackSystem.GenerateCardsForPack()
+
+		// 4. Lê o stock atualizado da blockchain para exibir
+		newStock, _ := s.blockchain.GetStock()
+
+		// 5. Entrega o pacote
+		s.sendToPlayer(player.ID, protocol.ServerMsg{
+			T:     protocol.PACK_OPENED,
+			Cards: cards,
+			Stock: int(newStock), // Stock real vindo do contrato
+		})
+	}()
 }
 
 func (s *TCPServer) handleAutoPlay(player *protocol.PlayerConn, enable bool) {

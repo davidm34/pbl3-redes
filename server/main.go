@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"pingpong/server/api"
+	"pingpong/server/blockchain"
 	"pingpong/server/matchmaking"
 	"pingpong/server/network"
 	"pingpong/server/pubsub"
@@ -16,13 +17,15 @@ import (
 func main() {
 	log.Println("[MAIN] A iniciar o servidor do jogo...")
 
-	// 1. Configuração da Topologia do Cluster a partir de Variáveis de Ambiente
+	// 1. Configuração da Topologia do Cluster
 	tcpAddr := getEnv("LISTEN_ADDR", ":9000")
 	apiAddr := getEnv("API_ADDR", ":8000")
 	thisServerAddress := "http://" + getEnv("HOSTNAME", "localhost") + apiAddr
 
 	allServersEnv := getEnv("ALL_SERVERS", thisServerAddress)
 	allServers := strings.Split(allServersEnv, ",")
+	
+	// ... (lógica de índice myIndex mantém-se igual) ...
 	myIndex := -1
 	for i, addr := range allServers {
 		if addr == thisServerAddress {
@@ -38,16 +41,46 @@ func main() {
 	nextServerAddress := allServers[nextIndex]
 	log.Printf("[MAIN] Topologia do anel configurada. Eu sou %s. O próximo é %s.", thisServerAddress, nextServerAddress)
 
-	// 2. Inicialização dos Componentes Centrais
+	// 2. Configuração do Blockchain (SEGURA)
+	
+	blockchainNodeURL := os.Getenv("BLOCKCHAIN_NODE_URL")
+	if blockchainNodeURL == "" {
+		// Fallback seguro apenas para desenvolvimento local fora do docker, se necessário
+		blockchainNodeURL = "http://blockchain-node:8545" 
+	}
+
+	contractAddr := os.Getenv("CONTRACT_ADDRESS")
+	if contractAddr == "" {
+		log.Fatal("[MAIN] Erro fatal: CONTRACT_ADDRESS não configurado no .env")
+	}
+
+	adminPrivateKey := os.Getenv("ADMIN_PRIVATE_KEY")
+	if adminPrivateKey == "" {
+		log.Fatal("[MAIN] Erro fatal: ADMIN_PRIVATE_KEY não configurada no .env")
+	}
+
+	log.Printf("[MAIN] A conectar ao Blockchain em %s...", blockchainNodeURL)
+	log.Printf("[MAIN] Endereço do Contrato alvo: %s", contractAddr)
+
+	// Inicializa o cliente
+	blockchainClient, err := blockchain.NewClient(blockchainNodeURL, contractAddr, adminPrivateKey)
+	if err != nil {
+		log.Fatalf("[MAIN] Erro fatal ao conectar ao Blockchain: %v", err)
+	}
+	
+	// Testa leitura inicial
+	if stock, err := blockchainClient.GetStock(); err == nil {
+		log.Printf("[MAIN] Conexão Blockchain OK! Estoque atual de pacotes: %d", stock)
+	} else {
+		log.Printf("[MAIN] Aviso: Conectado, mas erro ao ler estoque: %v", err)
+	}
+	
+	// 3. Inicialização dos Componentes Centrais
 	stateManager := state.NewStateManager()
 	broker := pubsub.NewBroker()
-
-	// Canal para o APIServer notificar o MatchmakingService quando o token chegar.
 	tokenAcquiredChan := make(chan *token.Token, 1)
 
-	// 3. Injeção de Dependências e Inicialização dos Serviços
-
-	// Serviço de Matchmaking (executado em segundo plano)
+	// 4. Serviços
 	matchmakingService := matchmaking.NewService(
 		stateManager,
 		broker,
@@ -57,28 +90,23 @@ func main() {
 		nextServerAddress,
 	)
 
-	// Servidor da API (para comunicação entre servidores)
 	apiServer := api.NewServer(
 		stateManager,
 		broker,
 		tokenAcquiredChan,
 		thisServerAddress,
 	)
-
-	// Conecta o receptor de token de cartas ao serviço de matchmaking
 	apiServer.SetTokenReceiver(matchmakingService)
 
-
-	// Servidor TCP (para comunicação com os clientes)
+	// Servidor TCP
 	tcpServer := network.NewTCPServer(
 		tcpAddr,
 		stateManager,
 		broker,
+		blockchainClient,
 	)
 
-	// 4. Iniciar os Serviços em Goroutines
-
-	// Inicia o servidor da API HTTP em segundo plano
+	// 5. Iniciar Goroutines
 	go func() {
 		log.Printf("[MAIN] A iniciar servidor da API em %s...", apiAddr)
 		if err := http.ListenAndServe(apiAddr, apiServer.Router()); err != nil {
@@ -86,18 +114,14 @@ func main() {
 		}
 	}()
 
-	// Inicia o serviço de matchmaking em segundo plano
 	go matchmakingService.Run()
 
-	// 5. Iniciar o Servidor TCP (bloqueia a goroutine principal)
-	// Este deve ser o último passo, pois Listen() é uma operação de bloqueio.
 	log.Printf("[MAIN] A iniciar servidor TCP para jogadores em %s...", tcpAddr)
 	if err := tcpServer.Listen(); err != nil {
 		log.Fatalf("[MAIN] Erro fatal no servidor TCP: %v", err)
 	}
 }
 
-// getEnv lê uma variável de ambiente ou retorna um valor padrão.
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
