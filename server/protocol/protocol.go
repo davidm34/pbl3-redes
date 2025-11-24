@@ -67,8 +67,10 @@ const (
 	NOAUTOPLAY = "NOAUTOPLAY"
 	REMATCH    = "REMATCH"
 	TRADE      = "TRADE"
-
+	GET_COLLECTION = "GET_COLLECTION" 
+	
 	// Servidor -> Cliente
+    COLLECTION     = "COLLECTION"     
 	MATCH_FOUND      = "MATCH_FOUND"
 	STATE            = "STATE"
 	ROUND_RESULT     = "ROUND_RESULT"

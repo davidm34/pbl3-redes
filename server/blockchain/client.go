@@ -175,3 +175,13 @@ func (c *Client) TransferCard(fromID, toID, cardID string) (string, error) {
 	log.Printf("[BLOCKCHAIN] Transferência iniciada: %s -> %s (Carta: %s). Hash: %s", fromID, toID, cardID, tx.Hash().Hex())
 	return tx.Hash().Hex(), nil
 }
+
+// GetUserCards consulta a blockchain para obter todas as cartas de um jogador
+func (c *Client) GetUserCards(playerID string) ([]string, error) {
+	// O parâmetro 'nil' usa o bloco mais recente
+	cards, err := c.contract.GetUserCards(nil, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar coleção do jogador: %w", err)
+	}
+	return cards, nil
+}

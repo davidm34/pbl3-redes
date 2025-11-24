@@ -145,6 +145,7 @@ func handleConn(conn net.Conn) {
 		fmt.Println("  /hand       - Mostrar sua mão atual")
 		fmt.Println("  /ping       - Liga/desliga exibição de RTT")
 		fmt.Println("  /pack       - Abrir pacote de cartas")
+		fmt.Println("  /collection - Visualizar suas cartas")
 		fmt.Println("  /trade      - Trocar cartas")
 		fmt.Println("  /autoplay   - Ativar autoplay (cartas automáticas após 12s)")
 		fmt.Println("  /noautoplay - Desativar autoplay (tempo ilimitado)")
@@ -334,6 +335,23 @@ func handleServerMessage(msg *ServerMsg) {
 
 	case "TRADE_SUCCESS":
 		fmt.Printf("\n🤝 TROCA REALIZADA: %s\n", msg.Msg)
+	case "COLLECTION":
+        fmt.Printf("\n📚 === SUA COLEÇÃO DE NFTS ===\n")
+        if len(msg.Cards) == 0 {
+            fmt.Println("  (Vazia - Abra pacotes para ganhar cartas!)")
+        } else {
+            for i, uniqueID := range msg.Cards {
+                baseID := getBaseID(uniqueID) // Usa a função auxiliar que criamos antes
+                card, exists := cardDB[baseID]
+                
+                if exists {
+                    fmt.Printf("  [%d] %s (%s) - ID: %s\n", i+1, card.Name, card.Element, uniqueID)
+                } else {
+                    fmt.Printf("  [%d] Carta Desconhecida - ID: %s\n", i+1, uniqueID)
+                }
+            }
+            fmt.Printf("\nTotal: %d cartas registradas na Blockchain.\n", len(msg.Cards))
+        }
 	}
 	
 }
@@ -376,7 +394,6 @@ func handleCommand(command string, encoder *json.Encoder) {
 		sendMessage(encoder, ClientMsg{T: "OPEN_PACK"})
 		fmt.Println("📦 Tentando abrir pacote...")
 	case "/trade":
-		fmt.Println("Uso: /trade <id_do_jogador_destino> <id_da_carta_unica>")
 		if len(parts) < 3 {
 			fmt.Println("❌ Uso: /trade <id_do_jogador_destino> <id_da_carta_unica>")
             fmt.Println("   Exemplo: /trade player_2 c_001:abc-123...")
@@ -387,6 +404,9 @@ func handleCommand(command string, encoder *json.Encoder) {
         // Enviamos o CardID no campo CardID e o Destino no campo Text
 		sendMessage(encoder, ClientMsg{T: "TRADE", CardID: cardID, Text: targetID})
 		fmt.Println("🔄 Solicitando transferência na blockchain...")
+	case "/collection":
+        sendMessage(encoder, ClientMsg{T: "GET_COLLECTION"})
+        fmt.Println("🔍 Consultando sua coleção na Blockchain...")
 
 	case "/autoplay":
 		sendMessage(encoder, ClientMsg{T: "AUTOPLAY"})

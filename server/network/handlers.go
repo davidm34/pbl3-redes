@@ -82,9 +82,10 @@ func (s *TCPServer) handleMessage(player *protocol.PlayerConn, msg *protocol.Cli
 		s.handlePing(player, msg.TS)
 	case protocol.OPEN_PACK:
 		s.handleOpenPack(player)
-	case protocol.TRADE:
-        // o cliente envia: CardID = "ID_DA_CARTA", Text = "ID_DO_DESTINATARIO"
+	case protocol.TRADE:        
         s.handleTrade(player, msg.CardID, msg.Text)
+	case protocol.GET_COLLECTION:
+        s.handleGetCollection(player)
 	case protocol.AUTOPLAY:
 		s.handleAutoPlay(player, true)
 	case protocol.NOAUTOPLAY:
@@ -254,4 +255,22 @@ func (s *TCPServer) handleTrade(player *protocol.PlayerConn, cardID string, targ
 			Msg: fmt.Sprintf("Você recebeu a carta %s de %s!", cardID, player.ID),
 		})
 	}()
+}
+
+func (s *TCPServer) handleGetCollection(player *protocol.PlayerConn) {
+    log.Printf("[HANDLER] %s solicitou visualizar sua coleção.", player.ID)
+    
+    // Consulta a Blockchain
+    cards, err := s.blockchain.GetUserCards(player.ID)
+    if err != nil {
+        log.Printf("[HANDLER] Erro ao buscar coleção: %v", err)
+        s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Msg: "Erro ao consultar Blockchain."})
+        return
+    }
+
+    // Envia resposta
+    s.sendToPlayer(player.ID, protocol.ServerMsg{
+        T:     protocol.COLLECTION,
+        Cards: cards, // Lista de IDs únicos (ex: c_001:uuid...)
+    })
 }

@@ -2,7 +2,7 @@ import hre from "hardhat";
 
 async function main() {
   // Endereço do seu contrato (o mesmo do .env)
-  const contractAddress = "0x1656F6448f3AF1263893cc724B956f66dc318882"; 
+  const contractAddress = "0xb1Db49913464f41e02480a86EfB2F0c8a6A39bA9"; 
 
   const PackRegistry = await hre.ethers.getContractFactory("PackRegistry");
   const contract = PackRegistry.attach(contractAddress);
