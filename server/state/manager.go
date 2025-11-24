@@ -6,6 +6,7 @@ import (
 	"log"
 	"pingpong/server/game"
 	"pingpong/server/protocol"
+	"pingpong/server/blockchain"	
 	"pingpong/server/pubsub"
 	"strings"
 	"sync"
@@ -37,6 +38,7 @@ type DistributedMatch struct {
 // de forma segura para acesso concorrente.
 type StateManager struct {
 	mu                 sync.RWMutex
+	Blockchain         *blockchain.Client
 	CardDB             *game.CardDB
 	PackSystem         *game.PackSystem
 	PlayersOnline      map[string]*protocol.PlayerConn
@@ -48,7 +50,7 @@ type StateManager struct {
 
 // NewStateManager cria e inicializa um novo gerenciador de estado.
 // Ele é responsável por carregar recursos iniciais como a base de dados de cartas.
-func NewStateManager() *StateManager {
+func NewStateManager(bc *blockchain.Client) *StateManager {
 	cardDB := game.NewCardDB()
 	if err := cardDB.LoadFromFile("cards.json"); err != nil {
 		log.Fatalf("[STATE] Erro fatal ao carregar base de dados de cartas: %v", err)
@@ -59,6 +61,7 @@ func NewStateManager() *StateManager {
 	packSystem := game.NewPackSystem(packConfig, cardDB)
 
 	return &StateManager{
+		Blockchain:         bc,
 		CardDB:             cardDB,
 		PackSystem:         packSystem,
 		PlayersOnline:      make(map[string]*protocol.PlayerConn),
@@ -455,4 +458,16 @@ func (sm *StateManager) IsPlayerOnline(playerID string) bool {
 
 	_, ok := sm.PlayersOnline[playerID]
 	return ok
+}
+
+// RecordMatchOnChain implementa a interface game.StateInformer
+func (sm *StateManager) RecordMatchOnChain(matchID, winnerID, loserID string) {
+    if sm.Blockchain != nil {
+        _, err := sm.Blockchain.RecordMatch(matchID, winnerID, loserID)
+        if err != nil {
+            log.Printf("[STATE] Erro ao gravar partida %s na blockchain: %v", matchID, err)
+        } else {
+            log.Printf("[STATE] Partida %s gravada com sucesso no ledger!", matchID)
+        }
+    }
 }

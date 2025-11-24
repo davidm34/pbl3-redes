@@ -142,3 +142,15 @@ func (c *Client) WaitForTransactionReceipt(txHashHex string) error {
 
 	return nil
 }
+
+// RecordMatch envia uma transação para registar o resultado de uma partida
+func (c *Client) RecordMatch(matchID, winnerID, loserID string) (string, error) {
+	// A função recordMatch do contrato exige (matchId, winnerId, loserId)
+	tx, err := c.contract.RecordMatch(c.auth, matchID, winnerID, loserID)
+	if err != nil {
+		return "", fmt.Errorf("erro ao registar partida na blockchain: %w", err)
+	}
+
+	log.Printf("[BLOCKCHAIN] Resultado da partida enviado! Hash: %s", tx.Hash().Hex())
+	return tx.Hash().Hex(), nil
+}

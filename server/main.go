@@ -76,7 +76,7 @@ func main() {
 	}
 	
 	// 3. Inicialização dos Componentes Centrais
-	stateManager := state.NewStateManager()
+	stateManager := state.NewStateManager(blockchainClient)
 	broker := pubsub.NewBroker()
 	tokenAcquiredChan := make(chan *token.Token, 1)
 

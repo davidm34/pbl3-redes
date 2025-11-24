@@ -26,6 +26,7 @@ type DistributedMatchInfo struct {
 type StateInformer interface {
 	GetDistributedMatchInfo(matchID string) (DistributedMatchInfo, bool)
 	IsPlayerOnline(playerID string) bool
+	RecordMatchOnChain(matchID, winnerID, loserID string)
 }
 
 // Match representa uma partida 1v1
@@ -424,20 +425,26 @@ func (m *Match) EndIfGameOver() bool {
 		m.State = StateEnded
 
 		var p1Result, p2Result string
+        var winnerID, loserID string
 
 		if m.HP[0] <= 0 && m.HP[1] <= 0 {
-			// Empate
-			p1Result = protocol.DRAW
-			p2Result = protocol.DRAW
+			p1Result, p2Result = protocol.DRAW, protocol.DRAW
+            // Empates podem ser ignorados ou registados com lógica específica
 		} else if m.HP[0] <= 0 {
-			// P1 perdeu
-			p1Result = protocol.LOSE
-			p2Result = protocol.WIN
+			p1Result, p2Result = protocol.LOSE, protocol.WIN
+            winnerID, loserID = m.P2.ID, m.P1.ID
 		} else {
-			// P2 perdeu
-			p1Result = protocol.WIN
-			p2Result = protocol.LOSE
+			p1Result, p2Result = protocol.WIN, protocol.LOSE
+            winnerID, loserID = m.P1.ID, m.P2.ID
 		}
+
+        // --- NOVO: Gravar na Blockchain ---
+        // Apenas gravamos se houver um vencedor claro (opcional: gravar empates)
+        if winnerID != "" {
+            log.Printf("[MATCH %s] A registar vitória de %s na Blockchain...", m.ID, winnerID)
+            // Executa em goroutine para não bloquear o envio da mensagem final
+            go m.informer.RecordMatchOnChain(m.ID, winnerID, loserID)
+        }
 
 		// Envia resultado final
 		m.sendToPlayerSmart(m.P1.ID, protocol.ServerMsg{T: protocol.MATCH_END, Result: p1Result})
