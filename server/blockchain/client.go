@@ -154,3 +154,24 @@ func (c *Client) RecordMatch(matchID, winnerID, loserID string) (string, error) 
 	log.Printf("[BLOCKCHAIN] Resultado da partida enviado! Hash: %s", tx.Hash().Hex())
 	return tx.Hash().Hex(), nil
 }
+
+// AssignCards regista a posse das cartas recém-geradas na blockchain
+func (c *Client) AssignCards(playerID string, cardIDs []string) (string, error) {
+	tx, err := c.contract.AssignCards(c.auth, playerID, cardIDs)
+	if err != nil {
+		return "", fmt.Errorf("erro ao atribuir cartas na blockchain: %w", err)
+	}
+	log.Printf("[BLOCKCHAIN] Cartas %v atribuídas a %s. Hash: %s", cardIDs, playerID, tx.Hash().Hex())
+	return tx.Hash().Hex(), nil
+}
+
+// TransferCard executa a troca de uma carta entre jogadores
+func (c *Client) TransferCard(fromID, toID, cardID string) (string, error) {
+	tx, err := c.contract.TransferCard(c.auth, fromID, toID, cardID)
+	if err != nil {
+		// O erro mais comum aqui será "Remetente nao possui esta carta" (regra do contrato)
+		return "", fmt.Errorf("erro ao transferir carta: %w", err)
+	}
+	log.Printf("[BLOCKCHAIN] Transferência iniciada: %s -> %s (Carta: %s). Hash: %s", fromID, toID, cardID, tx.Hash().Hex())
+	return tx.Hash().Hex(), nil
+}

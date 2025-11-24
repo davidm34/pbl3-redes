@@ -145,6 +145,7 @@ func handleConn(conn net.Conn) {
 		fmt.Println("  /hand       - Mostrar sua mão atual")
 		fmt.Println("  /ping       - Liga/desliga exibição de RTT")
 		fmt.Println("  /pack       - Abrir pacote de cartas")
+		fmt.Println("  /trade      - Trocar cartas")
 		fmt.Println("  /autoplay   - Ativar autoplay (cartas automáticas após 12s)")
 		fmt.Println("  /noautoplay - Desativar autoplay (tempo ilimitado)")
 		fmt.Println("  /rematch    - Solicitar nova partida com último oponente")
@@ -192,7 +193,7 @@ func playCardByIndex(cardIndex int, encoder *json.Encoder) {
 	}
 
 	cardID := currentHand[cardIndex-1]
-	card, exists := cardDB[cardID]
+	card, exists := cardDB[getBaseID(cardID)]
 	if !exists {
 		fmt.Printf("🎴 Jogando carta %d: %s\n", cardIndex, cardID)
 	} else {
@@ -211,7 +212,7 @@ func showHand() {
 
 	fmt.Println("\n🃏 === SUA MÃO ===")
 	for i, cardID := range currentHand {
-		card, exists := cardDB[cardID]
+		card, exists := cardDB[getBaseID(cardID)]
 		if exists {
 			fmt.Printf("  [%d] %s - %s (ATK: %d / DEF: %d)\n",
 				i+1, card.Name, card.Element, card.ATK, card.DEF)
@@ -234,7 +235,7 @@ func handleServerMessage(msg *ServerMsg) {
 		fmt.Printf("💚 Seu HP: %d | ❤️ HP do Oponente: %d\n", msg.You.HP, msg.Opponent.HP)
 		fmt.Printf("🃏 Sua mão (%d cartas):\n", len(msg.You.Hand))
 		for i, cardID := range msg.You.Hand {
-			card, exists := cardDB[cardID]
+			card, exists := cardDB[getBaseID(cardID)]
 			if exists {
 				fmt.Printf("  [%d] %s - %s (ATK: %d / DEF: %d)\n",
 					i+1, card.Name, card.Element, card.ATK, card.DEF)
@@ -330,7 +331,11 @@ func handleServerMessage(msg *ServerMsg) {
 		fmt.Printf("✅ %s\n", msg.Msg)
 		fmt.Printf("🎮 Nova partida com %s!\n", msg.OpponentID)
 		inMatch = true
+
+	case "TRADE_SUCCESS":
+		fmt.Printf("\n🤝 TROCA REALIZADA: %s\n", msg.Msg)
 	}
+	
 }
 
 func handleCommand(command string, encoder *json.Encoder) {
@@ -370,6 +375,18 @@ func handleCommand(command string, encoder *json.Encoder) {
 	case "/pack":
 		sendMessage(encoder, ClientMsg{T: "OPEN_PACK"})
 		fmt.Println("📦 Tentando abrir pacote...")
+	case "/trade":
+		fmt.Println("Uso: /trade <id_do_jogador_destino> <id_da_carta_unica>")
+		if len(parts) < 3 {
+			fmt.Println("❌ Uso: /trade <id_do_jogador_destino> <id_da_carta_unica>")
+            fmt.Println("   Exemplo: /trade player_2 c_001:abc-123...")
+			return
+		}
+		targetID := parts[1]
+		cardID := parts[2]
+        // Enviamos o CardID no campo CardID e o Destino no campo Text
+		sendMessage(encoder, ClientMsg{T: "TRADE", CardID: cardID, Text: targetID})
+		fmt.Println("🔄 Solicitando transferência na blockchain...")
 
 	case "/autoplay":
 		sendMessage(encoder, ClientMsg{T: "AUTOPLAY"})
@@ -413,4 +430,12 @@ func getEnv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// getBaseID remove o sufixo UUID para consultar os stats base da carta
+func getBaseID(uniqueID string) string {
+    if idx := strings.Index(uniqueID, ":"); idx != -1 {
+        return uniqueID[:idx]
+    }
+    return uniqueID
 }

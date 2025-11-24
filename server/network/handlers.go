@@ -10,6 +10,7 @@ import (
 	"pingpong/server/protocol"
 	"pingpong/server/pubsub"
 	"pingpong/server/state"
+	"github.com/google/uuid"
 )
 
 // TCPServer lida com todas as interações de rede TCP com os clientes.
@@ -80,7 +81,10 @@ func (s *TCPServer) handleMessage(player *protocol.PlayerConn, msg *protocol.Cli
 	case protocol.PING:
 		s.handlePing(player, msg.TS)
 	case protocol.OPEN_PACK:
-		s.handleOpenPack(player) // Lógica alterada para Blockchain
+		s.handleOpenPack(player)
+	case protocol.TRADE:
+        // o cliente envia: CardID = "ID_DA_CARTA", Text = "ID_DO_DESTINATARIO"
+        s.handleTrade(player, msg.CardID, msg.Text)
 	case protocol.AUTOPLAY:
 		s.handleAutoPlay(player, true)
 	case protocol.NOAUTOPLAY:
@@ -149,53 +153,50 @@ func (s *TCPServer) handlePing(player *protocol.PlayerConn, ts int64) {
 	})
 }
 
+// handleOpenPack com Registo de Propriedade (NFT)
 func (s *TCPServer) handleOpenPack(player *protocol.PlayerConn) {
-	log.Printf("[HANDLER] %s solicitou abrir um pacote. Iniciando transação na Blockchain...", player.ID)
+	log.Printf("[HANDLER] %s solicitou abrir um pacote.", player.ID)
 
-	// 1. Envia a transação para decrementar o stock no contrato inteligente
+	// 1. Transação de Débito (Economia)
 	txHash, err := s.blockchain.DecrementStock()
 	if err != nil {
-		log.Printf("[HANDLER] Erro ao enviar transação para %s: %v", player.ID, err)
-		s.sendToPlayer(player.ID, protocol.ServerMsg{
-			T:    protocol.ERROR,
-			Code: protocol.INTERNAL,
-			Msg:  "Erro ao comunicar com a Blockchain. Tente novamente.",
-		})
+		s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Code: protocol.INTERNAL, Msg: "Erro no Blockchain."})
 		return
 	}
 
-	// Notifica o jogador que o processo iniciou (opcional, UX)
-	log.Printf("[HANDLER] Transação enviada: %s. Aguardando mineração...", txHash)
-
-	// 2. Aguarda a confirmação da transação (Mineração do bloco)
-	// Isso bloqueia a goroutine, mas como cada cliente tem sua conexão ou o handler roda em rotina separada, ok.
-	// Idealmente, faríamos isso em background para não travar o processamento de outras mensagens deste jogador.
 	go func() {
-		err := s.blockchain.WaitForTransactionReceipt(txHash)
-		if err != nil {
-			log.Printf("[HANDLER] Transação falhou ou timeout para %s: %v", player.ID, err)
-			s.sendToPlayer(player.ID, protocol.ServerMsg{
-				T:    protocol.ERROR,
-				Code: "TX_FAILED",
-				Msg:  "A transação na blockchain falhou. O pacote não foi aberto.",
-			})
+		// 2. Aguarda confirmação do pagamento
+		if err := s.blockchain.WaitForTransactionReceipt(txHash); err != nil {
+			s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Msg: "Falha no pagamento do pacote."})
 			return
 		}
 
-		log.Printf("[HANDLER] Transação confirmada na blockchain! Gerando cartas para %s.", player.ID)
+		// 3. Gera Cartas Base (Genéricas)
+		baseCards := s.stateManager.PackSystem.GenerateCardsForPack()
+		
+		// 4. Transforma em NFTs (Adiciona UUID único)
+		// Ex: "c_001" -> "c_001:550e8400-e29b..."
+		uniqueCards := make([]string, len(baseCards))
+		for i, baseID := range baseCards {
+			uniqueCards[i] = fmt.Sprintf("%s:%s", baseID, uuid.New().String())
+		}
 
-		// 3. Gera as cartas (Stock já foi decrementado na rede)
-		// Usamos o PackSystem do StateManager apenas para gerar as cartas, ignorando o stock local dele.
-		cards := s.stateManager.PackSystem.GenerateCardsForPack()
+		// 5. Regista a Propriedade na Blockchain (AssignCards)
+		log.Printf("[HANDLER] A registar posse das cartas %v para %s...", uniqueCards, player.ID)
+		assignTx, err := s.blockchain.AssignCards(player.ID, uniqueCards)
+		if err != nil {
+			log.Printf("[HANDLER] Erro crítico ao atribuir cartas: %v", err)
+			// Em produção, teríamos de reembolsar o pacote ou tentar novamente
+		} else {
+			s.blockchain.WaitForTransactionReceipt(assignTx) // Espera a confirmação da posse
+		}
 
-		// 4. Lê o stock atualizado da blockchain para exibir
+		// 6. Entrega ao Jogador
 		newStock, _ := s.blockchain.GetStock()
-
-		// 5. Entrega o pacote
 		s.sendToPlayer(player.ID, protocol.ServerMsg{
 			T:     protocol.PACK_OPENED,
-			Cards: cards,
-			Stock: int(newStock), // Stock real vindo do contrato
+			Cards: uniqueCards, // Entrega os IDs únicos!
+			Stock: int(newStock),
 		})
 	}()
 }
@@ -210,4 +211,47 @@ func (s *TCPServer) handleAutoPlay(player *protocol.PlayerConn, enable bool) {
 	}
 	s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Code: code, Msg: msg})
 	log.Printf("[HANDLER] %s alterou autoplay para: %t", player.ID, enable)
+}
+
+func (s *TCPServer) handleTrade(player *protocol.PlayerConn, cardID string, targetPlayerID string) {
+	if cardID == "" || targetPlayerID == "" {
+		s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Msg: "Uso: /trade <player_id> <card_id>"})
+		return
+	}
+
+    // Opcional: Verificar se o jogador alvo está online (s.stateManager.IsPlayerOnline...)
+    // Mas a blockchain funciona mesmo offline, então vamos deixar passar.
+
+	log.Printf("[HANDLER] %s quer transferir %s para %s", player.ID, cardID, targetPlayerID)
+
+	go func() {
+		// Chama o contrato para transferir a posse
+		txHash, err := s.blockchain.TransferCard(player.ID, targetPlayerID, cardID)
+		
+		if err != nil {
+			log.Printf("[HANDLER] Erro na transferência: %v", err)
+			s.sendToPlayer(player.ID, protocol.ServerMsg{
+				T: protocol.ERROR, 
+				Msg: "Erro na troca: Você não é o dono desta carta ou erro na rede.",
+			})
+			return
+		}
+
+		// Aguarda confirmação
+		if err := s.blockchain.WaitForTransactionReceipt(txHash); err != nil {
+			s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.ERROR, Msg: "A transação de troca falhou na mineração."})
+			return
+		}
+
+		// Sucesso! Notifica ambos.
+		successMsg := fmt.Sprintf("Sucesso! Carta %s transferida para %s.", cardID, targetPlayerID)
+		s.sendToPlayer(player.ID, protocol.ServerMsg{T: protocol.TRADE_SUCCESS, Msg: successMsg})
+		
+		// Tenta notificar o destinatário se estiver online neste servidor
+        // (Num cluster real, usaríamos o broker pub/sub para chegar a outro servidor)
+		s.sendToPlayer(targetPlayerID, protocol.ServerMsg{
+			T: protocol.TRADE_SUCCESS, 
+			Msg: fmt.Sprintf("Você recebeu a carta %s de %s!", cardID, player.ID),
+		})
+	}()
 }

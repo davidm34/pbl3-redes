@@ -116,3 +116,40 @@
 18:55:13.604940 table@remove removed @14
 18:59:48.145400 db@close closing
 18:59:48.154207 db@close done T·9.385956ms
+=============== Nov 24, 2025 (UTC) ===============
+12:36:14.029121 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:36:14.088216 version@stat F·[0 1] S·119KiB[0B 119KiB] Sc·[0.00 0.00]
+12:36:14.089223 db@open opening
+12:36:14.092400 journal@recovery F·1
+12:36:14.102681 journal@recovery recovering @25
+12:36:14.145176 memdb@flush created L0@28 N·895 S·54KiB "\x19\xbf\xdc..4\xc0D,v3639":"\xfa\xdbP..\u007fH\x11,v3632"
+12:36:14.154512 version@stat F·[1 1] S·174KiB[54KiB 119KiB] Sc·[0.25 0.00]
+12:36:14.205572 db@janitor F·5 G·1
+12:36:14.205823 db@janitor removing table-24
+12:36:14.208021 db@open done T·118.458306ms
+12:44:00.186310 db@close closing
+12:44:00.195763 db@close done T·9.955391ms
+=============== Nov 24, 2025 (UTC) ===============
+12:44:38.113178 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:44:38.122151 version@stat F·[1 1] S·174KiB[54KiB 119KiB] Sc·[0.25 0.00]
+12:44:38.122877 db@open opening
+12:44:38.126259 journal@recovery F·1
+12:44:38.131190 journal@recovery recovering @29
+12:44:38.173242 memdb@flush created L0@31 N·1114 S·71KiB "\x19.\xf6..~\xfaw,v4752":"unc..own,v3647"
+12:44:38.180733 version@stat F·[2 1] S·246KiB[126KiB 119KiB] Sc·[0.50 0.00]
+12:44:38.246285 db@janitor F·5 G·0
+12:44:38.247135 db@open done T·123.496633ms
+12:54:01.628062 db@close closing
+12:54:01.644053 db@close done T·17.151388ms
+=============== Nov 24, 2025 (UTC) ===============
+12:59:32.866753 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:59:32.935785 version@stat F·[2 1] S·246KiB[126KiB 119KiB] Sc·[0.50 0.00]
+12:59:32.937407 db@open opening
+12:59:32.942078 journal@recovery F·1
+12:59:32.982705 journal@recovery recovering @32
+12:59:33.024622 memdb@flush created L0@34 N·1355 S·79KiB "\x00\x9e\x13..\x1f\xb61,v6109":"\xe9\xac\xd3..\xf5\vI,v6112"
+12:59:33.032515 version@stat F·[3 1] S·325KiB[205KiB 119KiB] Sc·[0.75 0.00]
+12:59:33.093119 db@janitor F·6 G·0
+12:59:33.093609 db@open done T·155.905053ms
+13:00:38.332065 db@close closing
+13:00:38.337361 db@close done T·5.29162ms
