@@ -2,6 +2,8 @@ package matchmaking
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +45,7 @@ type MatchmakingService struct {
 type pendingMiningMatch struct {
 	matchID   string
 	challenge mining.MiningChallenge
+	miningHash string
 	p1        *protocol.PlayerConn
 	p2        *protocol.PlayerConn
 	p1Cards   []string
@@ -686,6 +689,8 @@ func (s *MatchmakingService) SubmitMiningSolution(player *protocol.PlayerConn, m
 		return
 	}
 
+	claimed.miningHash = computeMiningHash(claimed.challenge, nonce)
+
 	match, err := s.finalizePendingMatch(claimed)
 	if err != nil {
 		log.Printf("[MATCHMAKING] Erro ao finalizar partida %s após mineração: %v", matchID, err)
@@ -703,10 +708,10 @@ func (s *MatchmakingService) SubmitMiningSolution(player *protocol.PlayerConn, m
 
 func (s *MatchmakingService) finalizePendingMatch(p *pendingMiningMatch) (*game.Match, error) {
 	if len(p.p1Cards) == game.HandSize && len(p.p2Cards) == game.HandSize {
-		match := s.stateManager.CreateLocalMatchWithCardsAndID(p.matchID, p.p1, p.p2, s.broker, p.p1Cards, p.p2Cards)
+		match := s.stateManager.CreateLocalMatchWithCardsAndID(p.matchID, p.p1, p.p2, s.broker, p.p1Cards, p.p2Cards, p.miningHash, p.challenge.Difficulty)
 		return match, nil
 	}
-	match := s.stateManager.CreateLocalMatchWithID(p.matchID, p.p1, p.p2, s.broker)
+	match := s.stateManager.CreateLocalMatchWithIDAndMining(p.matchID, p.p1, p.p2, s.broker, p.miningHash, p.challenge.Difficulty)
 	return match, nil
 }
 
@@ -721,6 +726,12 @@ func (s *MatchmakingService) reserveCardsForMatch() ([]string, []string, error) 
 	}
 	log.Printf("[MATCHMAKING] Pegou %d cartas do token para a partida", len(cards))
 	return cards[:game.HandSize], cards[game.HandSize:], nil
+}
+
+func computeMiningHash(ch mining.MiningChallenge, nonce uint64) string {
+	input := fmt.Sprintf("%d:%s:%d:%d", ch.Difficulty, ch.RandomNonce, ch.Timestamp, nonce)
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:])
 }
 
 // createMatchWithTokenCards cria uma partida usando cartas do token

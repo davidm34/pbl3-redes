@@ -204,18 +204,30 @@ func (sm *StateManager) CreateLocalMatchWithID(matchID string, p1, p2 *protocol.
 	return match
 }
 
-// CreateLocalMatchWithCards cria uma partida local com cartas predefinidas do token
-func (sm *StateManager) CreateLocalMatchWithCards(p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string) *game.Match {
-	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
-	return sm.CreateLocalMatchWithCardsAndID(matchID, p1, p2, broker, p1Cards, p2Cards)
-}
-
-// CreateLocalMatchWithCardsAndID cria uma partida local com cartas predefinidas e ID fixo.
-func (sm *StateManager) CreateLocalMatchWithCardsAndID(matchID string, p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string) *game.Match {
+// CreateLocalMatchWithIDAndMining cria uma partida local com metadados de prova de trabalho.
+func (sm *StateManager) CreateLocalMatchWithIDAndMining(matchID string, p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, miningHash string, miningDifficulty int) *game.Match {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	match := game.NewMatchWithCards(matchID, p1, p2, sm.CardDB, broker, sm, p1Cards, p2Cards)
+	match := game.NewMinedMatch(matchID, p1, p2, sm.CardDB, broker, sm, miningHash, miningDifficulty)
+	sm.ActiveMatches[matchID] = match
+
+	log.Printf("[STATE] Partida local %s criada entre %s e %s com PoW hash=%s diff=%d.", matchID, p1.ID, p2.ID, miningHash, miningDifficulty)
+	return match
+}
+
+// CreateLocalMatchWithCards cria uma partida local com cartas predefinidas do token
+func (sm *StateManager) CreateLocalMatchWithCards(p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string) *game.Match {
+	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
+	return sm.CreateLocalMatchWithCardsAndID(matchID, p1, p2, broker, p1Cards, p2Cards, "", 0)
+}
+
+// CreateLocalMatchWithCardsAndID cria uma partida local com cartas predefinidas e ID fixo.
+func (sm *StateManager) CreateLocalMatchWithCardsAndID(matchID string, p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string, miningHash string, miningDifficulty int) *game.Match {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	match := game.NewMatchWithCards(matchID, p1, p2, sm.CardDB, broker, sm, p1Cards, p2Cards, miningHash, miningDifficulty)
 	sm.ActiveMatches[matchID] = match
 
 	log.Printf("[STATE] Partida local %s criada entre %s e %s com cartas do token.", matchID, p1.ID, p2.ID)
@@ -326,7 +338,7 @@ func (sm *StateManager) ConfirmAndCreateDistributedMatchWithCards(matchID, guest
 	// mas precisamos de um placeholder
 	hostPlayerConn := protocol.NewPlayerConn(hostPlayerID, nil)
 	hostCardsPlaceholder := make([]string, len(guestCards)) // Placeholder vazio
-	match := game.NewMatchWithCards(matchID, hostPlayerConn, guestPlayer, sm.CardDB, broker, sm, hostCardsPlaceholder, guestCards)
+	match := game.NewMatchWithCards(matchID, hostPlayerConn, guestPlayer, sm.CardDB, broker, sm, hostCardsPlaceholder, guestCards, "", 0)
 	sm.ActiveMatches[matchID] = match
 
 	log.Printf("[STATE] Partida distribuída %s confirmada para o jogador local %s com cartas do token.", matchID, guestPlayerID)
@@ -433,7 +445,7 @@ func (sm *StateManager) CreateDistributedMatchAsHostWithCards(matchID string, ho
 	sm.DistributedMatches[matchID] = distMatchInfo
 
 	// 4. Cria a partida com cartas predefinidas do token
-	match := game.NewMatchWithCards(matchID, hostPlayer, guestPlayerPlaceholder, sm.CardDB, broker, sm, hostCards, guestCards)
+	match := game.NewMatchWithCards(matchID, hostPlayer, guestPlayerPlaceholder, sm.CardDB, broker, sm, hostCards, guestCards, "", 0)
 	sm.ActiveMatches[matchID] = match
 
 	log.Printf("[STATE] Partida distribuída %s criada pelo anfitrião %s com cartas do token.", matchID, hostPlayer.ID)

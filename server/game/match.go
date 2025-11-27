@@ -46,25 +46,13 @@ type Match struct {
 	done     chan bool
 	broker   *pubsub.Broker
 	informer StateInformer
+	MiningHash       string
+	MiningDifficulty int
 }
 
 // NewMatch cria uma nova partida
 func NewMatch(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pubsub.Broker, informer StateInformer) *Match {
-	match := &Match{
-		ID:       id,
-		P1:       p1,
-		P2:       p2,
-		HP:       [2]int{HPStart, HPStart},
-		Hands:    [2]Hand{},
-		Discard:  [2][]string{{}, {}},
-		Round:    1,
-		State:    StateAwaitingPlays,
-		Waiting:  make(map[string]string),
-		CardDB:   cardDB,
-		done:     make(chan bool, 1),
-		broker:   broker,
-		informer: informer,
-	}
+	match := newMatchBase(id, p1, p2, cardDB, broker, informer, "", 0)
 
 	// Gera mãos iniciais
 	match.DealInitialHands()
@@ -72,23 +60,16 @@ func NewMatch(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pu
 	return match
 }
 
+// NewMinedMatch cria uma partida inicializando com metadados de prova de trabalho.
+func NewMinedMatch(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pubsub.Broker, informer StateInformer, miningHash string, miningDifficulty int) *Match {
+	match := newMatchBase(id, p1, p2, cardDB, broker, informer, miningHash, miningDifficulty)
+	match.DealInitialHands()
+	return match
+}
+
 // NewMatchWithCards cria uma nova partida com cartas predefinidas do token
-func NewMatchWithCards(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pubsub.Broker, informer StateInformer, p1Cards, p2Cards []string) *Match {
-	match := &Match{
-		ID:       id,
-		P1:       p1,
-		P2:       p2,
-		HP:       [2]int{HPStart, HPStart},
-		Hands:    [2]Hand{},
-		Discard:  [2][]string{{}, {}},
-		Round:    1,
-		State:    StateAwaitingPlays,
-		Waiting:  make(map[string]string),
-		CardDB:   cardDB,
-		done:     make(chan bool, 1),
-		broker:   broker,
-		informer: informer,
-	}
+func NewMatchWithCards(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pubsub.Broker, informer StateInformer, p1Cards, p2Cards []string, miningHash string, miningDifficulty int) *Match {
+	match := newMatchBase(id, p1, p2, cardDB, broker, informer, miningHash, miningDifficulty)
 
 	// Define as mãos iniciais com as cartas do token
 	match.mu.Lock()
@@ -99,6 +80,26 @@ func NewMatchWithCards(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, b
 	log.Printf("[MATCH %s] Partida criada com cartas do token. P1: %v, P2: %v", id, p1Cards, p2Cards)
 
 	return match
+}
+
+func newMatchBase(id string, p1, p2 *protocol.PlayerConn, cardDB *CardDB, broker *pubsub.Broker, informer StateInformer, miningHash string, miningDifficulty int) *Match {
+	return &Match{
+		ID:               id,
+		P1:               p1,
+		P2:               p2,
+		HP:               [2]int{HPStart, HPStart},
+		Hands:            [2]Hand{},
+		Discard:          [2][]string{{}, {}},
+		Round:            1,
+		State:            StateAwaitingPlays,
+		Waiting:          make(map[string]string),
+		CardDB:           cardDB,
+		done:             make(chan bool, 1),
+		broker:           broker,
+		informer:         informer,
+		MiningHash:       miningHash,
+		MiningDifficulty: miningDifficulty,
+	}
 }
 
 // DealInitialHands distribui as mãos iniciais
@@ -445,6 +446,8 @@ func (m *Match) EndIfGameOver() bool {
             // Executa em goroutine para não bloquear o envio da mensagem final
             go m.informer.RecordMatchOnChain(m.ID, winnerID, loserID)
         }
+
+		log.Printf("[MATCH %s] Finalizada com PoW hash=%s dificuldade=%d", m.ID, m.MiningHash, m.MiningDifficulty)
 
 		// Envia resultado final
 		m.sendToPlayerSmart(m.P1.ID, protocol.ServerMsg{T: protocol.MATCH_END, Result: p1Result})
