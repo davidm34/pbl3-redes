@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"pingpong/server/game"
+	"pingpong/server/mining"
 	"pingpong/server/protocol"
 	"pingpong/server/pubsub"
 	"pingpong/server/state"
@@ -35,7 +36,21 @@ type MatchmakingService struct {
 	lastKnownStock    int               // Último estoque conhecido (para regeneração inteligente)
 	totalPacksOpened  int               // Total de pacotes abertos desde o início
 	currentToken      *token.Token      // Token com pool de cartas
+	pendingMu         sync.Mutex
+	pendingMining     map[string]*pendingMiningMatch
 }
+
+type pendingMiningMatch struct {
+	matchID   string
+	challenge mining.MiningChallenge
+	p1        *protocol.PlayerConn
+	p2        *protocol.PlayerConn
+	p1Cards   []string
+	p2Cards   []string
+	createdAt time.Time
+}
+
+const defaultMiningDifficulty = 4
 
 // NewService cria uma nova instância do serviço de matchmaking.
 func NewService(sm *state.StateManager, broker *pubsub.Broker, tokenChan chan *token.Token, selfAddr string, allAddrs []string, nextAddr string) *MatchmakingService {
@@ -66,6 +81,7 @@ func NewService(sm *state.StateManager, broker *pubsub.Broker, tokenChan chan *t
 		isLeader:          isLeader,
 		lastKnownStock:    1000,
 		totalPacksOpened:  0,
+		pendingMining:     make(map[string]*pendingMiningMatch),
 	}
 
 	// Calcula durações dos timers
@@ -346,13 +362,23 @@ func (s *MatchmakingService) processMatchmakingQueue() {
 		p1 := playersInQueue[0]
 		p2 := playersInQueue[1]
 		s.stateManager.RemovePlayersFromQueue(p1, p2)
-		match, err := s.createMatchWithTokenCards(p1, p2, false, "", "")
-		if err != nil {
-			log.Printf("[MATCHMAKING] Erro ao criar partida local com cartas do token: %v. A criar partida padrão.", err)
-			match = s.stateManager.CreateLocalMatch(p1, p2, s.broker)
+		matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
+		challenge := mining.GenerateChallenge(defaultMiningDifficulty)
+		p1Cards, p2Cards, cardErr := s.reserveCardsForMatch()
+		if cardErr != nil {
+			log.Printf("[MATCHMAKING] Não foi possível reservar cartas do token: %v. A partida prosseguirá com cartas padrão após mineração.", cardErr)
 		}
-		s.notifyPlayersOfMatch(match, p1, p2)
-		go s.monitorMatch(match)
+		pending := &pendingMiningMatch{
+			matchID:   matchID,
+			challenge: challenge,
+			p1:        p1,
+			p2:        p2,
+			p1Cards:   p1Cards,
+			p2Cards:   p2Cards,
+			createdAt: time.Now(),
+		}
+		s.storePendingMatch(pending)
+		s.emitMiningChallenge(pending)
 	} else if len(playersInQueue) == 1 {
 		player := playersInQueue[0]
 		log.Printf("[MATCHMAKING] A tentar encontrar um oponente distribuído para %s...", player.ID)
@@ -565,6 +591,136 @@ func (s *MatchmakingService) regenerateAndSetToken() {
 // SetToken permite ao servidor de API injetar o token de cartas recebido
 func (s *MatchmakingService) SetToken(t *token.Token) {
 	s.currentToken = t
+}
+
+// storePendingMatch mantém desafios de mineração ativos em memória.
+func (s *MatchmakingService) storePendingMatch(p *pendingMiningMatch) {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	s.pendingMining[p.matchID] = p
+}
+
+func (s *MatchmakingService) getPendingMatch(matchID string) *pendingMiningMatch {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	return s.pendingMining[matchID]
+}
+
+func (s *MatchmakingService) popPendingMatch(matchID string) *pendingMiningMatch {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	pending := s.pendingMining[matchID]
+	if pending != nil {
+		delete(s.pendingMining, matchID)
+	}
+	return pending
+}
+
+func (s *MatchmakingService) emitMiningChallenge(p *pendingMiningMatch) {
+	payload := &protocol.MiningChallengeMsg{
+		Difficulty:  p.challenge.Difficulty,
+		RandomNonce: p.challenge.RandomNonce,
+		Timestamp:   p.challenge.Timestamp,
+	}
+	s.broker.Publish("player."+p.p1.ID, protocol.ServerMsg{
+		T:          protocol.MINING_CHALLENGE,
+		MatchID:    p.matchID,
+		OpponentID: p.p2.ID,
+		Challenge:  payload,
+	})
+	s.broker.Publish("player."+p.p2.ID, protocol.ServerMsg{
+		T:          protocol.MINING_CHALLENGE,
+		MatchID:    p.matchID,
+		OpponentID: p.p1.ID,
+		Challenge:  payload,
+	})
+}
+
+// SubmitMiningSolution é chamado pelo servidor de rede quando um cliente envia uma prova.
+func (s *MatchmakingService) SubmitMiningSolution(player *protocol.PlayerConn, matchID string, nonce uint64, hash string) {
+	if matchID == "" {
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.INVALID_MESSAGE,
+			Msg:  "MatchID ausente para prova de mineração.",
+		})
+		return
+	}
+
+	pending := s.getPendingMatch(matchID)
+	if pending == nil {
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.MATCH_NOT_FOUND,
+			Msg:  "Partida não está aguardando prova de mineração.",
+		})
+		return
+	}
+
+	if player.ID != pending.p1.ID && player.ID != pending.p2.ID {
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.MATCH_NOT_FOUND,
+			Msg:  "Você não pertence a este desafio de mineração.",
+		})
+		return
+	}
+
+	solution := mining.MiningSolution{Nonce: nonce, Hash: hash}
+	if !mining.ValidateSolution(pending.challenge, solution) {
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.INVALID_PROOF,
+			Msg:  "Prova de mineração inválida, tente novamente.",
+		})
+		return
+	}
+
+	claimed := s.popPendingMatch(matchID)
+	if claimed == nil {
+		// Já processado por outra solução válida.
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:   protocol.ERROR,
+			Msg: "Desafio já resolvido.",
+		})
+		return
+	}
+
+	match, err := s.finalizePendingMatch(claimed)
+	if err != nil {
+		log.Printf("[MATCHMAKING] Erro ao finalizar partida %s após mineração: %v", matchID, err)
+		s.broker.Publish("player."+player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.INTERNAL,
+			Msg:  "Erro ao criar partida após prova de trabalho.",
+		})
+		return
+	}
+
+	s.notifyPlayersOfMatch(match, claimed.p1, claimed.p2)
+	go s.monitorMatch(match)
+}
+
+func (s *MatchmakingService) finalizePendingMatch(p *pendingMiningMatch) (*game.Match, error) {
+	if len(p.p1Cards) == game.HandSize && len(p.p2Cards) == game.HandSize {
+		match := s.stateManager.CreateLocalMatchWithCardsAndID(p.matchID, p.p1, p.p2, s.broker, p.p1Cards, p.p2Cards)
+		return match, nil
+	}
+	match := s.stateManager.CreateLocalMatchWithID(p.matchID, p.p1, p.p2, s.broker)
+	return match, nil
+}
+
+func (s *MatchmakingService) reserveCardsForMatch() ([]string, []string, error) {
+	if s.currentToken == nil {
+		return nil, nil, fmt.Errorf("token não disponível")
+	}
+	totalCardsNeeded := 2 * game.HandSize
+	cards, err := s.currentToken.DrawCards(totalCardsNeeded)
+	if err != nil {
+		return nil, nil, fmt.Errorf("erro ao pegar cartas do token: %w", err)
+	}
+	log.Printf("[MATCHMAKING] Pegou %d cartas do token para a partida", len(cards))
+	return cards[:game.HandSize], cards[game.HandSize:], nil
 }
 
 // createMatchWithTokenCards cria uma partida usando cartas do token

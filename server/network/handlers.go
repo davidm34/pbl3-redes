@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"pingpong/server/blockchain"
+	"pingpong/server/matchmaking"
 	"pingpong/server/protocol"
 	"pingpong/server/pubsub"
 	"pingpong/server/state"
@@ -19,16 +20,18 @@ type TCPServer struct {
 	stateManager *state.StateManager
 	broker       *pubsub.Broker
 	blockchain   *blockchain.Client // NOVO: Cliente Blockchain injetado
+	matchmaking  *matchmaking.MatchmakingService
 }
 
 // NewTCPServer cria uma nova instância do servidor TCP, injetando as dependências.
 // ATUALIZADO: Agora recebe o cliente blockchain
-func NewTCPServer(addr string, sm *state.StateManager, broker *pubsub.Broker, bc *blockchain.Client) *TCPServer {
+func NewTCPServer(addr string, sm *state.StateManager, broker *pubsub.Broker, bc *blockchain.Client, mm *matchmaking.MatchmakingService) *TCPServer {
 	return &TCPServer{
 		listenAddr:   addr,
 		stateManager: sm,
 		broker:       broker,
 		blockchain:   bc,
+		matchmaking:  mm,
 	}
 }
 
@@ -90,6 +93,8 @@ func (s *TCPServer) handleMessage(player *protocol.PlayerConn, msg *protocol.Cli
 		s.handleAutoPlay(player, true)
 	case protocol.NOAUTOPLAY:
 		s.handleAutoPlay(player, false)
+	case protocol.MINING_SOLUTION:
+		s.handleMiningSolution(player, msg)
 	default:
 		s.sendToPlayer(player.ID, protocol.ServerMsg{
 			T:    protocol.ERROR,
@@ -152,6 +157,18 @@ func (s *TCPServer) handlePing(player *protocol.PlayerConn, ts int64) {
 		TS:    ts,
 		RTTMs: rtt,
 	})
+}
+
+func (s *TCPServer) handleMiningSolution(player *protocol.PlayerConn, msg *protocol.ClientMsg) {
+	if s.matchmaking == nil {
+		s.sendToPlayer(player.ID, protocol.ServerMsg{
+			T:    protocol.ERROR,
+			Code: protocol.INTERNAL,
+			Msg:  "Serviço de matchmaking indisponível.",
+		})
+		return
+	}
+	s.matchmaking.SubmitMiningSolution(player, msg.MatchID, msg.Nonce, msg.Hash)
 }
 
 // handleOpenPack com Registo de Propriedade (NFT)

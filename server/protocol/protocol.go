@@ -8,10 +8,13 @@ import (
 
 // Mensagens do Cliente para o Servidor
 type ClientMsg struct {
-	T      string `json:"t"`
-	CardID string `json:"cardId,omitempty"`
-	Text   string `json:"text,omitempty"`
-	TS     int64  `json:"ts,omitempty"`
+	T       string `json:"t"`
+	CardID  string `json:"cardId,omitempty"`
+	Text    string `json:"text,omitempty"`
+	TS      int64  `json:"ts,omitempty"`
+	MatchID string `json:"matchId,omitempty"`
+	Nonce   uint64 `json:"nonce,omitempty"`
+	Hash    string `json:"hash,omitempty"`
 }
 
 // Mensagens do Servidor para o Cliente
@@ -35,6 +38,7 @@ type ServerMsg struct {
 	// Campos para chat
 	SenderID string `json:"senderId,omitempty"`
 	Text     string `json:"text,omitempty"`
+	Challenge *MiningChallengeMsg `json:"challenge,omitempty"`
 }
 
 // ClientAction é uma estrutura para encapsular a mensagem do cliente e quem a enviou
@@ -54,6 +58,13 @@ type PlayerView struct {
 	DmgTaken     int      `json:"dmgTaken,omitempty"`
 }
 
+// MiningChallengeMsg encapsula os dados mínimos do desafio enviados aos clientes.
+type MiningChallengeMsg struct {
+	Difficulty  int    `json:"difficulty"`
+	RandomNonce string `json:"randomNonce"`
+	Timestamp   int64  `json:"timestamp"`
+}
+
 // Constantes de tipos de mensagens
 const (
 	// Cliente -> Servidor
@@ -68,10 +79,12 @@ const (
 	REMATCH    = "REMATCH"
 	TRADE      = "TRADE"
 	GET_COLLECTION = "GET_COLLECTION" 
+	MINING_SOLUTION = "MINING_SOLUTION"
 	
 	// Servidor -> Cliente
     COLLECTION     = "COLLECTION"     
 	MATCH_FOUND      = "MATCH_FOUND"
+	MINING_CHALLENGE = "MINING_CHALLENGE"
 	STATE            = "STATE"
 	ROUND_RESULT     = "ROUND_RESULT"
 	PACK_OPENED      = "PACK_OPENED"
@@ -93,6 +106,7 @@ const (
 	MATCH_NOT_FOUND = "MATCH_NOT_FOUND"
 	OUT_OF_STOCK    = "OUT_OF_STOCK"
 	INTERNAL        = "INTERNAL"
+	INVALID_PROOF   = "INVALID_PROOF"
 )
 
 // Resultados de partida

@@ -188,10 +188,15 @@ func (sm *StateManager) CleanupPlayer(player *protocol.PlayerConn) *protocol.Pla
 // CreateLocalMatch cria uma nova partida entre dois jogadores e a adiciona ao estado.
 // O broker é injetado para desacoplar o estado da lógica de comunicação.
 func (sm *StateManager) CreateLocalMatch(p1, p2 *protocol.PlayerConn, broker *pubsub.Broker) *game.Match {
+	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
+	return sm.CreateLocalMatchWithID(matchID, p1, p2, broker)
+}
+
+// CreateLocalMatchWithID permite criar uma partida local com um ID pré-definido.
+func (sm *StateManager) CreateLocalMatchWithID(matchID string, p1, p2 *protocol.PlayerConn, broker *pubsub.Broker) *game.Match {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
 	match := game.NewMatch(matchID, p1, p2, sm.CardDB, broker, sm)
 	sm.ActiveMatches[matchID] = match
 
@@ -201,10 +206,15 @@ func (sm *StateManager) CreateLocalMatch(p1, p2 *protocol.PlayerConn, broker *pu
 
 // CreateLocalMatchWithCards cria uma partida local com cartas predefinidas do token
 func (sm *StateManager) CreateLocalMatchWithCards(p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string) *game.Match {
+	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
+	return sm.CreateLocalMatchWithCardsAndID(matchID, p1, p2, broker, p1Cards, p2Cards)
+}
+
+// CreateLocalMatchWithCardsAndID cria uma partida local com cartas predefinidas e ID fixo.
+func (sm *StateManager) CreateLocalMatchWithCardsAndID(matchID string, p1, p2 *protocol.PlayerConn, broker *pubsub.Broker, p1Cards, p2Cards []string) *game.Match {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	matchID := fmt.Sprintf("local_match_%d", time.Now().UnixNano())
 	match := game.NewMatchWithCards(matchID, p1, p2, sm.CardDB, broker, sm, p1Cards, p2Cards)
 	sm.ActiveMatches[matchID] = match
 

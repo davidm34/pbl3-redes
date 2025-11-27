@@ -104,6 +104,7 @@ func main() {
 		stateManager,
 		broker,
 		blockchainClient,
+		matchmakingService,
 	)
 
 	// 5. Iniciar Goroutines
