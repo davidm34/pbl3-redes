@@ -734,6 +734,11 @@ func computeMiningHash(ch mining.MiningChallenge, nonce uint64) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ProcessMatchmakingQueueOnceForTest expõe o processamento de fila para cenários de teste.
+func (s *MatchmakingService) ProcessMatchmakingQueueOnceForTest() {
+	s.processMatchmakingQueue()
+}
+
 // createMatchWithTokenCards cria uma partida usando cartas do token
 func (s *MatchmakingService) createMatchWithTokenCards(p1, p2 *protocol.PlayerConn, isDistributed bool, guestServer string, matchID string) (*game.Match, error) {
 	if s.currentToken == nil {

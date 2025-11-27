@@ -12,7 +12,202 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pingpong/server/matchmaking"
+	"pingpong/server/mining"
+	"pingpong/server/protocol"
+	"pingpong/server/pubsub"
+	"pingpong/server/state"
+	"pingpong/server/token"
 )
+
+func TestMiningStress(t *testing.T) {
+	testStart := time.Now()
+
+	// Garante que paths relativos (cards.json) funcionam como no servidor.
+	wd, _ := os.Getwd()
+	if err := os.Chdir("../server"); err != nil {
+		t.Fatalf("não foi possível mudar para o diretório do servidor: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	numClients := 200 // Default para "centenas" de hashes simultâneos.
+	if raw := os.Getenv("MINING_STRESS_CLIENTS"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			numClients = parsed
+		} else {
+			t.Logf("[MINING_STRESS] valor inválido em MINING_STRESS_CLIENTS=%q: %v (usando %d)", raw, err, numClients)
+		}
+	}
+	if numClients < 2 {
+		t.Fatalf("numClients deve ser >= 2, recebido %d", numClients)
+	}
+	if numClients%2 != 0 {
+		t.Fatalf("numClients deve ser par, recebido %d", numClients)
+	}
+	t.Logf("[MINING_STRESS] iniciando com %d clientes/goroutines", numClients)
+
+	broker := pubsub.NewBroker()
+	sm := state.NewStateManager(nil)
+	tokenChan := make(chan *token.Token, 1)
+	mm := matchmaking.NewService(sm, broker, tokenChan, "http://localhost:8000", []string{"http://localhost:8000"}, "http://localhost:8000")
+
+	type miningResult struct {
+		matchID           string
+		miningDur         time.Duration
+		serverValidation  time.Duration
+		matchConfirmation time.Duration
+		err               error
+	}
+
+	results := make(chan miningResult, numClients)
+	var wg sync.WaitGroup
+
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func(clientID int) {
+			defer wg.Done()
+
+			playerID := fmt.Sprintf("client_%d", clientID)
+			player := protocol.NewPlayerConn(playerID, nil)
+			sm.AddPlayerOnline(player)
+
+			sub := broker.Subscribe("player." + playerID)
+			defer broker.Unsubscribe(sub)
+
+			sm.AddPlayerToQueue(player)
+
+			timeout := time.After(20 * time.Second)
+			var challenge *protocol.MiningChallengeMsg
+			var matchID string
+
+			for challenge == nil {
+				select {
+				case msg := <-sub:
+					serverMsg, ok := msg.Payload.(protocol.ServerMsg)
+					if !ok {
+						continue
+					}
+					if serverMsg.T == protocol.MINING_CHALLENGE && serverMsg.Challenge != nil {
+						challenge = serverMsg.Challenge
+						matchID = serverMsg.MatchID
+					}
+				case <-timeout:
+					results <- miningResult{err: fmt.Errorf("timeout aguardando desafio para %s", playerID)}
+					return
+				}
+			}
+
+			miningStart := time.Now()
+			ch := mining.MiningChallenge{
+				Difficulty:  challenge.Difficulty,
+				RandomNonce: challenge.RandomNonce,
+				Timestamp:   challenge.Timestamp,
+			}
+			solution := mining.SolveChallenge(ch)
+			miningDur := time.Since(miningStart)
+
+			validationStart := time.Now()
+			mm.SubmitMiningSolution(player, matchID, solution.Nonce, solution.Hash)
+			serverValidation := time.Since(validationStart)
+			matchWaitStart := time.Now()
+
+			validateTimeout := time.After(20 * time.Second)
+			for {
+				select {
+				case msg := <-sub:
+					serverMsg, ok := msg.Payload.(protocol.ServerMsg)
+					if !ok {
+						continue
+					}
+					if serverMsg.T == protocol.MATCH_FOUND && serverMsg.MatchID == matchID {
+						results <- miningResult{
+							matchID:           matchID,
+							miningDur:         miningDur,
+							serverValidation:  serverValidation,
+							matchConfirmation: time.Since(matchWaitStart),
+						}
+						return
+					}
+					if serverMsg.T == protocol.ERROR {
+						results <- miningResult{err: fmt.Errorf("erro do servidor: %s %s", serverMsg.Code, serverMsg.Msg)}
+						return
+					}
+				case <-validateTimeout:
+					results <- miningResult{err: fmt.Errorf("timeout aguardando início da partida para %s", playerID)}
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Aguarda os jogadores entrarem na fila e processa até emparelhar todos.
+	waitDeadline := time.Now().Add(5 * time.Second)
+	for len(sm.GetMatchmakingQueueSnapshot()) < numClients && time.Now().Before(waitDeadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	processDeadline := time.Now().Add(45 * time.Second)
+	for {
+		snapshot := sm.GetMatchmakingQueueSnapshot()
+		if len(snapshot) == 0 {
+			break
+		}
+		if time.Now().After(processDeadline) {
+			t.Fatalf("timeout ao processar fila, restam %d jogadores", len(snapshot))
+		}
+		if len(snapshot) < 2 {
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+		mm.ProcessMatchmakingQueueOnceForTest()
+	}
+
+	wg.Wait()
+	close(results)
+
+	var successes int
+	var failures int
+	var totalMining time.Duration
+	var totalValidation time.Duration
+	var totalMatchWait time.Duration
+	var maxMining time.Duration
+	var maxValidation time.Duration
+	uniqueMatches := make(map[string]struct{})
+
+	for res := range results {
+		if res.err != nil {
+			failures++
+			t.Logf("[MINING_STRESS] falha: %v", res.err)
+			continue
+		}
+		successes++
+		uniqueMatches[res.matchID] = struct{}{}
+		totalMining += res.miningDur
+		totalValidation += res.serverValidation
+		totalMatchWait += res.matchConfirmation
+		if res.miningDur > maxMining {
+			maxMining = res.miningDur
+		}
+		if res.serverValidation > maxValidation {
+			maxValidation = res.serverValidation
+		}
+	}
+
+	if successes > 0 {
+		avgMining := totalMining / time.Duration(successes)
+		avgValidation := totalValidation / time.Duration(successes)
+		avgMatchWait := totalMatchWait / time.Duration(successes)
+		elapsed := time.Since(testStart)
+		t.Logf("[MINING_STRESS] %d sucessos, %d falhas, %d partidas únicas", successes, failures, len(uniqueMatches))
+		t.Logf("[MINING_STRESS] Tempo médio de mineração (cliente): %s | validação (servidor): %s | espera até início da partida: %s", avgMining, avgValidation, avgMatchWait)
+		t.Logf("[MINING_STRESS] Pico de mineração: %s | Pico de validação: %s | Throughput: %.1f submits/s em %s", maxMining, maxValidation, float64(successes)/elapsed.Seconds(), elapsed)
+	}
+
+	if failures > 0 {
+		t.Fatalf("falhas detectadas em %d clientes durante o teste de stress", failures)
+	}
+}
 
 func TestStressCluster(t *testing.T) {
 	// Compilar o binário do servidor para o diretório de teste
