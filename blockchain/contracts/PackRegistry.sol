@@ -2,19 +2,16 @@
 pragma solidity ^0.8.0;
 
 contract PackRegistry {
-    // --- Fase 2 & 3 (Mantidas) ---
     uint256 public totalPacks;
     struct Match { string matchId; string winnerId; string loserId; uint256 timestamp; }
     Match[] public matches;
     event StockUpdated(uint256 newStock, string reason);
     event MatchRecorded(string matchId, string winner, string loser, uint256 timestamp);
-
-    // --- FASE 4 & 5: PROPRIEDADE E COLEÇÃO ---
     
     // Mapeia ID da Carta -> Dono Atual
     mapping(string => string) public cardOwner;
     
-    // NOVO: Mapeia Dono -> Lista de IDs de Cartas (Inventário)
+    // Mapeia Dono -> Lista de IDs de Cartas (Inventário)
     mapping(string => string[]) public ownerCards;
 
     event CardAssigned(string cardId, string ownerId, uint256 timestamp);
@@ -36,8 +33,6 @@ contract PackRegistry {
         emit MatchRecorded(_matchId, _winnerId, _loserId, block.timestamp);
     }
     function getMatchCount() public view returns (uint256) { return matches.length; }
-
-    // --- FUNÇÕES ATUALIZADAS PARA GERIR A LISTA ---
 
     function assignCards(string memory _playerId, string[] memory _cardIds) public {
         for (uint i = 0; i < _cardIds.length; i++) {
@@ -66,7 +61,7 @@ contract PackRegistry {
         emit CardTransferred(_cardId, _fromId, _toId, block.timestamp);
     }
 
-    // NOVO: Função auxiliar para remover carta da lista (Swap & Pop)
+    // Função auxiliar para remover carta da lista (Swap & Pop)
     function removeCardFromList(string memory _ownerId, string memory _cardId) internal {
         string[] storage cards = ownerCards[_ownerId];
         for (uint i = 0; i < cards.length; i++) {

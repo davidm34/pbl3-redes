@@ -1,8 +1,11 @@
 import hre from "hardhat";
 
+dotenv.config({ path: "../.env" });
+
 async function main() {
+  
   // Endereço do seu contrato (o mesmo do .env)
-  const contractAddress = "0xb1Db49913464f41e02480a86EfB2F0c8a6A39bA9"; 
+  const contractAddress = process.env.CONTRACT_ADDRESS; 
 
   const PackRegistry = await hre.ethers.getContractFactory("PackRegistry");
   const contract = PackRegistry.attach(contractAddress);

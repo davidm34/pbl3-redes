@@ -1,7 +1,9 @@
 import "@nomicfoundation/hardhat-toolbox";
 
+
+dotenv.config({ path: "../.env" });
 // ADICIONE O '0x' NO INÍCIO DA STRING
-const PRIVATE_KEY = "0x2c9063953c63132870b25987dd055a15d67c12317f7d6246c5a5071013d3527c";
+const PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || process.env.PRIVATE_KEY || "";
 
 /** @type import('hardhat/config').HardhatUserConfig */
 export default {

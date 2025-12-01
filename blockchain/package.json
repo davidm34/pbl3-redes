@@ -3,5 +3,8 @@
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "hardhat": "^2.27.0"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
 }
