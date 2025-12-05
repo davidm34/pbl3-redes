@@ -95,8 +95,6 @@ func (c *Client) GetStock() (int64, error) {
 // DecrementStock envia uma transação para diminuir o estoque (Escrita custa Gas e leva tempo)
 func (c *Client) DecrementStock() (string, error) {
 	// Atualiza o contexto da transação (Gas Price, Nonce, etc)
-	// Em redes de produção, precisaríamos calcular o gas price dinamicamente.
-	// Na nossa rede privada, o padrão geralmente funciona bem.
 	
 	// IMPORTANTE: Transações de escrita precisam do 'c.auth' para serem assinadas
 	tx, err := c.contract.DecrementStock(c.auth)
@@ -115,10 +113,10 @@ func (c *Client) DecrementStock() (string, error) {
 // WaitForTransactionReceipt aguarda até que a transação seja minerada
 func (c *Client) WaitForTransactionReceipt(txHashHex string) error {
 	txHash := common.HexToHash(txHashHex)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Aumentei para 30s por segurança
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) 
 	defer cancel()
 
-	// CORREÇÃO: Primeiro buscamos o objeto da transação na rede
+	// Primeiro buscamos o objeto da transação na rede
 	tx, isPending, err := c.ethClient.TransactionByHash(ctx, txHash)
 	if err != nil {
 		// Se a transação não for encontrada imediatamente, pode ser que ainda não tenha sido propagada

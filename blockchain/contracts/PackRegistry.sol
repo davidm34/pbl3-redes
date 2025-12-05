@@ -21,7 +21,6 @@ contract PackRegistry {
         totalPacks = _initialStock;
     }
 
-    // ... (decrementStock, getStock, recordMatch, getMatchCount mantêm-se IGUAIS) ...
     function decrementStock() public {
         require(totalPacks > 0, "Estoque esgotado");
         totalPacks -= 1;

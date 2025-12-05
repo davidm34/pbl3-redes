@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-
+	"time"
 	"pingpong/server/protocol"
 	"pingpong/server/pubsub"
 )
@@ -13,16 +13,48 @@ import (
 // É executada numa goroutine para cada cliente.
 func (s *TCPServer) handleConn(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
-	log.Printf("[CLIENT_MGR] Nova conexão aceite de %s", peer)
+	log.Printf("[CLIENT_MGR] Nova conexão TCP de %s", peer)
 
+	// Cria o objeto PlayerConn inicialmente com o IP (provisório)
 	player := protocol.NewPlayerConn(peer, conn)
+
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	
+	msg, err := player.ReadMsg()
+	if err != nil {
+		log.Printf("[CLIENT_MGR] Erro no handshake de login com %s: %v", peer, err)
+		conn.Close()
+		return
+	}
+
+	if msg.T != protocol.LOGIN {
+		log.Printf("[CLIENT_MGR] %s enviou %s antes de LOGIN. Desconectando.", peer, msg.T)
+		player.SendMsg(protocol.ServerMsg{T: protocol.ERROR, Msg: "Você deve fazer LOGIN primeiro."})
+		conn.Close()
+		return
+	}
+
+	// Atualiza o ID do jogador com o nome enviado
+	newID := msg.Text
+	if newID == "" {
+		newID = peer // Fallback se vier vazio
+	}
+	player.ID = newID
+	
+	// Remove o timeout para o funcionamento normal
+	conn.SetReadDeadline(time.Time{})
+	
+	log.Printf("[CLIENT_MGR] Login realizado com sucesso: %s (%s)", player.ID, peer)
+	// -----------------------
+
+	// Agora sim, adiciona ao gerenciador de estado com o ID correto
 	s.stateManager.AddPlayerOnline(player)
 
 	playerSub := s.broker.Subscribe(fmt.Sprintf("player.%s", player.ID))
 	go s.writeLoop(player, playerSub)
 
 	defer func() {
-		log.Printf("[CLIENT_MGR] A iniciar limpeza para %s...", peer)
+		log.Printf("[CLIENT_MGR] A iniciar limpeza para %s...", player.ID)
 		s.broker.Unsubscribe(playerSub)
 
 		if opponent := s.stateManager.CleanupPlayer(player); opponent != nil {
@@ -38,7 +70,7 @@ func (s *TCPServer) handleConn(conn net.Conn) {
 			})
 		}
 		conn.Close()
-		log.Printf("[CLIENT_MGR] Conexão com %s encerrada e recursos libertados.", peer)
+		log.Printf("[CLIENT_MGR] Conexão com %s encerrada.", player.ID)
 	}()
 
 	s.readLoop(player)

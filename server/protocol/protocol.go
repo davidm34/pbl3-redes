@@ -57,6 +57,7 @@ type PlayerView struct {
 // Constantes de tipos de mensagens
 const (
 	// Cliente -> Servidor
+	LOGIN      = "LOGIN"
 	FIND_MATCH = "FIND_MATCH"
 	PLAY       = "PLAY"
 	CHAT       = "CHAT"

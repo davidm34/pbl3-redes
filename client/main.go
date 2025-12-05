@@ -75,6 +75,15 @@ var cardDB = map[string]Card{
 }
 
 func main() {
+	fmt.Print("👤 Digite seu nome de usuário: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	username := strings.TrimSpace(scanner.Text())
+	if username == "" {
+		username = "player_" + strconv.Itoa(int(time.Now().Unix()%1000))
+		fmt.Printf("⚠️ Nome vazio. Usando ID temporário: %s\n", username)
+	}
+
 	addr := getEnv("SERVER_ADDR", "localhost:9000")
 	for {
 		log.Printf("[CLIENT] dialing %s ...", addr)
@@ -84,7 +93,7 @@ func main() {
 			time.Sleep(time.Second)
 			continue
 		}
-		handleConn(conn)
+		handleConn(conn, username)
 	}
 }
 
@@ -96,13 +105,16 @@ var (
 	// CORREÇÃO: A variável 'gameState' foi removida porque não era utilizada.
 )
 
-func handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, username string) {
 	defer conn.Close()
 	peer := conn.RemoteAddr().String()
 	log.Printf("[CLIENT] Conectado ao servidor %s", peer)
 
 	encoder := json.NewEncoder(conn)
 	scanner := bufio.NewScanner(conn)
+
+	fmt.Printf("🔑 Realizando login como %s...\n", username)
+	sendMessage(encoder, ClientMsg{T: "LOGIN", Text: username})
 
 	// Goroutine para receber mensagens do servidor
 	go func() {
@@ -122,8 +134,8 @@ func handleConn(conn net.Conn) {
 	}()
 
 	// Envia FIND_MATCH automaticamente
-	sendMessage(encoder, ClientMsg{T: "FIND_MATCH"})
-	fmt.Println("🔍 Procurando partida...")
+	// sendMessage(encoder, ClientMsg{T: "FIND_MATCH"})
+	//  fmt.Println("🔍 Procurando partida...")
 
 	// Goroutine para enviar PINGs periódicos
 	go func() {
@@ -141,6 +153,7 @@ func handleConn(conn net.Conn) {
 		inputScanner := bufio.NewScanner(os.Stdin)
 		fmt.Println("\n=== ATTRIBUTE WAR CLIENT ===")
 		fmt.Println("Comandos disponíveis:")
+		fmt.Println("  /find       - Entrar em uma Partida")
 		fmt.Println("  /play <idx> - Jogar carta pelo índice (1-5)")
 		fmt.Println("  /hand       - Mostrar sua mão atual")
 		fmt.Println("  /ping       - Liga/desliga exibição de RTT")
@@ -365,6 +378,13 @@ func handleCommand(command string, encoder *json.Encoder) {
 	cmd := strings.ToLower(parts[0])
 
 	switch cmd {
+	case "/find":
+		if inMatch {
+			fmt.Println("❌ Você já está em uma partida!")
+		} else {
+			sendMessage(encoder, ClientMsg{T: "FIND_MATCH"})
+			fmt.Println("🔍 Entrando na fila de matchmaking...")
+		}
 	case "/play":
 		if len(parts) < 2 {
 			fmt.Println("❌ Uso: /play <índice> (exemplo: /play 1)")

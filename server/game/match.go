@@ -438,8 +438,7 @@ func (m *Match) EndIfGameOver() bool {
             winnerID, loserID = m.P1.ID, m.P2.ID
 		}
 
-        // --- NOVO: Gravar na Blockchain ---
-        // Apenas gravamos se houver um vencedor claro (opcional: gravar empates)
+        // Apenas gravamos se houver um vencedor claro 
         if winnerID != "" {
             log.Printf("[MATCH %s] A registar vitória de %s na Blockchain...", m.ID, winnerID)
             // Executa em goroutine para não bloquear o envio da mensagem final
