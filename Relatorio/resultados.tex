@@ -24,41 +24,13 @@ O fluxo \texttt{OPEN\_PACK} foi exercitado em dezenas de requisi\c{c}\~oes simul
 Nos testes de integra\c{c}\~ao do cluster, cada servidor consumiu cartas iniciais somente quando detinha o token, como evidenciado por mensagens \texttt{[MATCHMAKING] Pegou 10 cartas do token para a partida} seguidas de \texttt{[MATCHMAKING] A passar o token ...}. A reintrodu\c{c}\~ao autom\'atica (\texttt{refillPool\_unsafe}) foi acionada quando o pool caiu abaixo do limiar, emitindo \texttt{[TOKEN] Pool reabastecido}. Al\'em disso, o registro \texttt{recordMatch} foi disparado ao final das partidas com vencedores definidos, gravando IDs no \emph{ledger}.
 
 \subsection*{Partidas distribu\'{\i}das e sincroniza\c{c}\~ao de estado}
-Jogadores conectados a \texttt{server-1} e \texttt{server-2} foram pareados via \texttt{find-opponent}/\texttt{request-match}. O lote de dez cartas retirado do token foi particionado em m\~aos sim\'etricas para anfitri\~ao e convidado, confirmado por logs \texttt{[MATCH]} em ambos os n\'os. Cada jogada remota percorreu \texttt{POST /matches/\{id\}/action}; \texttt{forwardPlayIfNeeded()} evitou eco e manteve determinismo. Os resultados de rodada (\texttt{ROUND\_RESULT}) exibiram danos e HP id\^enticos, e \texttt{MATCH\_END} foi entregue simultaneamente aos dois clientes. A Figura~\ref{fig:seq-distribuida-bc} deve sintetizar a sequ\^encia de chamadas REST e publica\c{c}\~oes para documentar o ciclo completo.
-
-\begin{figure}[htbp]
-  \centering
-  \fbox{\parbox{0.92\linewidth}{Inserir diagrama de sequ\^encia: \texttt{find-opponent} $\rightarrow$ \texttt{request-match} $\rightarrow$ \texttt{action}, publica\c{c}\~oes via broker e grava\c{c}\~ao de \texttt{recordMatch}.}}
-  \caption{Fluxo de uma partida distribu\'{\i}da com liquida\c{c}\~ao de resultado na blockchain.}
-  \label{fig:seq-distribuida-bc}
-\end{figure}
+Jogadores conectados a \texttt{server-1} e \texttt{server-2} foram pareados via \texttt{find-opponent}/\texttt{request-match}. O lote de dez cartas retirado do token foi particionado em m\~aos sim\'etricas para anfitri\~ao e convidado, confirmado por logs \texttt{[MATCH]} em ambos os n\'os. Cada jogada remota percorreu \texttt{POST /matches/\{id\}/action}; \texttt{forwardPlayIfNeeded()} evitou eco e manteve determinismo. Os resultados de rodada (\texttt{ROUND\_RESULT}) exibiram danos e HP id\^enticos, e \texttt{MATCH\_END} foi entregue simultaneamente aos dois clientes.
 
 \subsection*{Observabilidade de lat\^encia e vaz\~ao}
-O cliente CLI mediu o RTT com \texttt{PING/PONG} peri\'odicos. Durante partidas locais e distribu\'{\i}das, os valores permaneceram em poucos milissegundos, coerentes com rede local e sem perdas de \texttt{PING}. Sugere-se consolidar as amostras em gr\'aficos de s\'erie temporal e CDF (Figuras~\ref{fig:rtt-timeseries-bc} e \ref{fig:rtt-cdf-bc}) para evidenciar estabilidade. Os logs \texttt{[MATCH]} e \texttt{[MATCHMAKING]} indicaram vaz\~ao sustentada de mensagens sem filas internas, mesmo durante confirma\c{c}\~ao de transa\c{c}\~oes, pois estas s\~ao aguardadas em \emph{goroutine} separada.
-
-\begin{figure}[htbp]
-  \centering
-  \fbox{\parbox{0.92\linewidth}{Inserir gr\'afico com a s\'erie temporal dos valores de RTT medidos pelo cliente durante partidas distribu\'{\i}das com confirma\c{c}\~oes on-chain em paralelo.}}
-  \caption{Valores de RTT observados durante partidas distribu\'{\i}das.}
-  \label{fig:rtt-timeseries-bc}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \fbox{\parbox{0.92\linewidth}{Inserir gr\'afico CDF dos valores de RTT coletados nas partidas de teste.}}
-  \caption{Distribui\c{c}\~ao acumulada dos RTTs medidos pelo cliente.}
-  \label{fig:rtt-cdf-bc}
-\end{figure}
+O cliente CLI mediu o RTT com \texttt{PING/PONG} peri\'odicos. Durante partidas locais e distribu\'{\i}das, os valores permaneceram em poucos milissegundos, coerentes com rede local e sem perdas de \texttt{PING}. Os logs \texttt{[MATCH]} e \texttt{[MATCHMAKING]} indicaram vaz\~ao sustentada de mensagens sem filas internas, mesmo durante confirma\c{c}\~ao de transa\c{c}\~oes, pois estas s\~ao aguardadas em \emph{goroutine} separada.
 
 \subsection*{Toler\^ancia a falhas e reabastecimento}
-Ao interromper deliberadamente um dos tr\^es servidores durante \texttt{tests/stress\_cluster\_test.go}, os demais n\'os continuaram a responder: pacotes foram abertos at\'e o estoque on-chain zerar, e as propor\c{c}\~oes \texttt{PACK\_OPENED}/\texttt{OUT\_OF\_STOCK} corresponderam ao saldo do contrato. O \emph{watchdog} de token promoveu o pr\'oximo n\'o vivo e reconfigurou o anel, evitando travamentos. A Figura~\ref{fig:pipeline-cartas-bc} deve ilustrar o pipeline completo: leitura do \texttt{cards.json}, rota do token, chamadas \emph{on-chain} de estoque e transfer\^encias, e auditoria de partidas.
-
-\begin{figure}[htbp]
-  \centering
-  \fbox{\parbox{0.92\linewidth}{Inserir diagrama do pipeline de gest\~ao de cartas: carga do \texttt{cards.json}, circula\c{c}\~ao do token, chamadas \texttt{decrementStock}/\texttt{assignCards}, e \texttt{recordMatch}.}}
-  \caption{Pipeline de gest\~ao de cartas e auditoria distribu\'{\i}da com blockchain.}
-  \label{fig:pipeline-cartas-bc}
-\end{figure}
+Ao interromper deliberadamente um dos tr\^es servidores durante \texttt{tests/stress\_cluster\_test.go}, os demais n\'os continuaram a responder: pacotes foram abertos at\'e o estoque on-chain zerar, e as propor\c{c}\~oes \texttt{PACK\_OPENED}/\texttt{OUT\_OF\_STOCK} corresponderam ao saldo do contrato. O \emph{watchdog} de token promoveu o pr\'oximo n\'o vivo e reconfigurou o anel, evitando travamentos. O pipeline completo abrange leitura do \texttt{cards.json}, rota do token, chamadas \emph{on-chain} de estoque e transfer\^encias, e auditoria de partidas.
 
 Em s\'{\i}ntese, o sistema apresentou:
 \begin{itemize}

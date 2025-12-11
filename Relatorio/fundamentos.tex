@@ -1,54 +1,52 @@
+A evolu\c{c}\~ao de arquiteturas para jogos massivos multijogador (MMO) tem migrado de modelos puramente centralizados para ecossistemas distribu\'{\i}dos que priorizam a propriedade de ativos digitais e a transpar\^encia das regras de neg\'ocio. O projeto atual adota uma abordagem h\'{\i}brida, combinando a performance de servidores de jogo distribu\'{\i}dos com a seguran\c{c}a e imutabilidade de uma rede \emph{Blockchain} para o gerenciamento de estados cr\'{\i}ticos.
 
-A evolução de arquiteturas para jogos massivos multijogador (MMO) tem migrado de modelos puramente centralizados para ecossistemas distribuídos que priorizam a propriedade de ativos digitais e a transparência das regras de negócio. O projeto atual adota uma abordagem híbrida, combinando a performance de servidores de jogo distribuídos com a segurança e imutabilidade de uma rede \emph{Blockchain} para o gerenciamento de estados críticos.
+\subsection{Blockchain e Livros-Raz\~ao Distribu\'{\i}dos}
+Diferente do prot\'otipo anterior, que dependia de um anel l\'ogico de servidores para consist\^encia, a nova solu\c{c}\~ao utiliza uma \emph{Blockchain} como camada base de verdade. Uma \emph{blockchain} \'e, essencialmente, um livro-raz\~ao distribu\'{\i}do e anexado sequencialmente (\emph{append-only}), onde transa\c{c}\~oes s\~ao validadas por consenso entre n\'os participantes, eliminando a necessidade de uma autoridade central confi\'avel~\cite{zheng2017}.
 
-\subsection{Blockchain e Livros-Razão Distribuídos}
-Diferente do protótipo anterior, que dependia de um anel lógico de servidores para consistência, a nova solução utiliza uma \emph{Blockchain} como camada base de verdade. Uma \emph{blockchain} é, essencialmente, um livro-razão distribuído e anexado sequencialmente (\emph{append-only}), onde transações são validadas por consenso entre nós participantes, eliminando a necessidade de uma autoridade central confiável~\cite{zheng2017}.
+No contexto do projeto, a rede Ethereum \'e utilizada para garantir que o ``estoque global de pacotes'' e a propriedade das cartas sejam geridos de forma descentralizada. A arquitetura da Ethereum implementa uma m\'aquina de estados quase-Turing-completa (\emph{EVM - Ethereum Virtual Machine}), permitindo n\~ao apenas o registro de transfer\^encias de valor, mas a execu\c{c}\~ao de c\'odigo arbitr\'ario replicado em todos os n\'os da rede~\cite{wood2014}. Isso resolve nativamente o problema de \emph{double-spending} (ou dupla abertura de pacotes) sem a complexidade de algoritmos de elei\c{c}\~ao de l\'{\i}der ou recupera\c{c}\~ao de tokens perdidos.
 
-No contexto do projeto, a rede Ethereum é utilizada para garantir que o "estoque global de pacotes" e a propriedade das cartas sejam geridos de forma descentralizada. A arquitetura da Ethereum implementa uma máquina de estados quase-Turing-completa (\emph{EVM - Ethereum Virtual Machine}), permitindo não apenas o registro de transferências de valor, mas a execução de código arbitrário replicado em todos os nós da rede~\cite{wood2014}. Isso resolve nativamente o problema de \emph{double-spending} (ou dupla abertura de pacotes) sem a complexidade de algoritmos de eleição de líder ou recuperação de tokens perdidos.
+\subsection{Smart Contracts como Regras de Neg\'ocio}
+A l\'ogica de distribui\c{c}\~ao de cartas e registro de partidas foi encapsulada em \textbf{Smart Contracts} escritos na linguagem Solidity. O conceito de contratos inteligentes, introduzido teoricamente por Nick Szabo, refere-se a protocolos computacionais que facilitam, verificam ou imp\~oem a negocia\c{c}\~ao ou execu\c{c}\~ao de um contrato digitalmente~\cite{szabo1997}.
 
-\subsection{Smart Contracts como Regras de Negócio}
-A lógica de distribuição de cartas e registro de partidas foi encapsulada em \textbf{Smart Contracts} escritos na linguagem Solidity. O conceito de contratos inteligentes, introduzido teoricamente por Nick Szabo, refere-se a protocolos computacionais que facilitam, verificam ou impõem a negociação ou execução de um contrato digitalmente~\cite{szabo1997}.
+O contrato \texttt{PackRegistry.sol} atua como um terceiro confi\'avel e aut\^onomo. Ao inv\'es de confiar que um servidor de jogo respeite o limite de estoque, o c\'odigo imut\'avel na \emph{blockchain} rejeita matematicamente qualquer transa\c{c}\~ao que tente decrementar o estoque abaixo de zero ou transferir uma carta sem a assinatura criptogr\'afica do propriet\'ario. Isso garante integridade forte (\emph{strong consistency}) para ativos digitais, enquanto libera os servidores de jogo para lidarem com a l\'ogica r\'apida e vol\'atil das partidas~\cite{antonopoulos2018}.
 
-O contrato \texttt{PackRegistry.sol} atua como um terceiro confiável e autônomo. Ao invés de confiar que um servidor de jogo respeite o limite de estoque, o código imutável na \emph{blockchain} rejeita matematicamente qualquer transação que tente decrementar o estoque abaixo de zero ou transferir uma carta sem a assinatura criptográfica do proprietário. Isso garante integridade forte (\emph{strong consistency}) para ativos digitais, enquanto libera os servidores de jogo para lidarem com a lógica rápida e volátil das partidas~\cite{antonopoulos2018}.
-
-\subsection{Arquitetura Híbrida: On-chain e Off-chain}
-Sistemas de jogos baseados em \emph{blockchain} frequentemente enfrentam o desafio da escalabilidade e latência. Para mitigar isso, o projeto adota um padrão de arquitetura híbrida:
+\subsection{Arquitetura H\'{\i}brida: On-chain e Off-chain}
+Sistemas de jogos baseados em \emph{blockchain} frequentemente enfrentam o desafio da escalabilidade e lat\^encia. Para mitigar isso, o projeto adota um padr\~ao de arquitetura h\'{\i}brida:
 \begin{itemize}
-    \item \textbf{Off-chain (Alta Velocidade):} A comunicação em tempo real durante as batalhas (troca de movimentos, cálculo de dano) ocorre via conexões TCP diretas e APIs REST entre servidores Go, mantendo a baixa latência necessária para a experiência do usuário~\cite{fielding2000}.
-    \item \textbf{On-chain (Alta Segurança):} Eventos críticos, como a abertura de um pacote de cartas, o resultado final de uma partida e a troca de cartas entre jogadores, são submetidos à \emph{blockchain} via transações assinadas.
+    \item \textbf{Off-chain (Alta Velocidade):} A comunica\c{c}\~ao em tempo real durante as batalhas (troca de movimentos, c\'alculo de dano) ocorre via conex\~oes TCP diretas e APIs REST entre servidores Go, mantendo a baixa lat\^encia necess\'aria para a experi\^encia do usu\'ario~\cite{fielding2000}.
+    \item \textbf{On-chain (Alta Seguran\c{c}a):} Eventos cr\'{\i}ticos, como a abertura de um pacote de cartas, o resultado final de uma partida e a troca de cartas entre jogadores, s\~ao submetidos \`a \emph{blockchain} via transa\c{c}\~oes assinadas.
 \end{itemize}
 
-Essa separação permite que o sistema escale horizontalmente o \emph{matchmaking} (via \emph{publish-subscribe} e orquestração de contêineres Docker), enquanto mantém um registro auditável e persistente dos ativos no livro-razão compartilhado~\cite{xu2019}.
+Essa separa\c{c}\~ao permite que o sistema escale horizontalmente o \emph{matchmaking} (via \emph{publish-subscribe} e orquestra\c{c}\~ao de cont\^eineres Docker), enquanto mant\'em um registro audit\'avel e persistente dos ativos no livro-raz\~ao compartilhado~\cite{xu2019}.
 
-\subsection{Integração e Ferramentas}
-A interoperabilidade entre o ambiente de execução \texttt{Go} e a \emph{Ethereum Virtual Machine} é viabilizada pelo uso de \emph{bindings} gerados (via \texttt{abigen}) e pelo protocolo JSON-RPC. O cliente Go atua como um nó leve ou interage com um nó Geth (\emph{Go-Ethereum}), assinando transações com chaves privadas geridas localmente. A orquestração de todo esse ambiente — incluindo nós de \emph{blockchain} privados, servidores de aplicação e bancos de dados — continua sendo gerida via Docker Compose, essencial para garantir a reprodutibilidade dos testes de consenso e mineração em ambiente laboratorial.
+\subsection{Integ\-ra\c{c}\~ao e Ferramentas}
+A interoperabilidade entre o ambiente de execu\c{c}\~ao \texttt{Go} e a \emph{Ethereum Virtual Machine} \'e viabilizada pelo uso de \emph{bindings} gerados (via \texttt{abigen}) e pelo protocolo JSON-RPC. O cliente Go atua como um n\'o leve ou interage com um n\'o Geth (\emph{Go-Ethereum}), assinando transa\c{c}\~oes com chaves privadas geridas localmente. A orquestra\c{c}\~ao de todo esse ambiente --- incluindo n\'os de \emph{blockchain} privados, servidores de aplica\c{c}\~ao e bancos de dados --- continua sendo gerida via Docker Compose, essencial para garantir a reprodutibilidade dos testes de consenso e minera\c{c}\~ao em ambiente laboratorial.
 
-A Tabela~\ref{tab:fund-teorica-pilares-new} atualiza os pilares teóricos do projeto, refletindo a substituição do anel de tokens pela tecnologia de registros distribuídos.
+A Tabela~\ref{tab:fund-teorica-pilares-new} atualiza os pilares te\'oricos do projeto, refletindo a substitui\c{c}\~ao do anel de tokens pela tecnologia de registros distribu\'{\i}dos.
 
 \begin{table}[htbp]
   \centering
-  \caption{Pilares teóricos atualizados para a arquitetura baseada em Blockchain.}
+  \caption{Pilares te\'oricos atualizados para a arquitetura baseada em Blockchain.}
   \label{tab:fund-teorica-pilares-new}
   \begin{tabular}{@{} p{0.22\linewidth} p{0.34\linewidth} p{0.34\linewidth} @{}}
     \toprule
-    \textbf{Pilar} & \textbf{Referência Principal} & \textbf{Aplicação no Projeto} \\
+    \textbf{Pilar} & \textbf{Refer\^encia Principal} & \textbf{Aplica\c{c}\~ao no Projeto} \\
     \midrule
-    Blockchain Architecture & Wood~\cite{wood2014}, Zheng \emph{et al.}~\cite{zheng2017} & Livro-razão imutável para persistência do estado global (estoque e inventário). \\
-    Smart Contracts & Szabo~\cite{szabo1997}, Antonopoulos~\cite{antonopoulos2018} & Lógica autônoma para distribuição de pacotes e validação de trocas (\texttt{PackRegistry}). \\
-    Arquitetura Híbrida & Xu \emph{et al.}~\cite{xu2019} & Separação entre jogabilidade (Off-chain) e liquidação de ativos (On-chain). \\
-    RESTful APIs & Fielding~\cite{fielding2000} & Comunicação síncrona entre servidores para \emph{matchmaking}. \\
+    Blockchain Architecture & Wood~\cite{wood2014}, Zheng \emph{et al.}~\cite{zheng2017} & Livro-raz\~ao imut\'avel para persist\^encia do estado global (estoque e invent\'ario). \\
+    Smart Contracts & Szabo~\cite{szabo1997}, Antonopoulos~\cite{antonopoulos2018} & L\'ogica aut\^onoma para distribui\c{c}\~ao de pacotes e valida\c{c}\~ao de trocas (\texttt{PackRegistry}). \\
+    Arquitetura H\'{\i}brida & Xu \emph{et al.}~\cite{xu2019} & Separa\c{c}\~ao entre jogabilidade (Off-chain) e liquida\c{c}\~ao de ativos (On-chain). \\
+    RESTful APIs & Fielding~\cite{fielding2000} & Comunica\c{c}\~ao s\'incrona entre servidores para \emph{matchmaking}. \\
     Publish-Subscribe & Eugster \emph{et al.}~\cite{eugster2003} & Desacoplamento de mensagens de eventos para clientes conectados. \\
-    Concorrência em Go & The Go Authors~\cite{go-tour-concurrency} & Gerenciamento de múltiplas conexões TCP e listeners de eventos da \emph{chain}. \\
+    Concorr\^encia em Go & The Go Authors~\cite{go-tour-concurrency} & Gerenciamento de m\'ultiplas conex\~oes TCP e \emph{listeners} de eventos da \emph{chain}. \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-A \textbf{Figura~\ref{fig:blockchain-arch}} ilustra a nova topologia, onde os servidores de jogo atuam como clientes da rede Ethereum, submetendo transações para o contrato inteligente compartilhado.
+A \textbf{Figura~\ref{fig:blockchain-arch}} (Figura~1) ilustra a topologia consolidada: o anel de servidores de jogo conecta-se ao n\'o Ethereum, executa o token ring para m\~aos iniciais e submete transa\c{c}\~oes ao contrato \emph{PackRegistry}.
 
-% Sugestão de inserção de figura (se houver)
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.95\linewidth]{tec502-modelo-latex-relatorio-pbl/figuras/arquitetura.png}
-  \caption{Arquitetura híbrida: Servidores de Jogo interagindo com Smart Contracts na rede Ethereum.}
+  \includegraphics[width=0.95\linewidth]{figuras/token-ring.png}
+  \caption{Topologia distribu\'{\i}da com token ring e integra\c{c}\~ao ao contrato \emph{PackRegistry}.}
   \label{fig:blockchain-arch}
 \end{figure}
