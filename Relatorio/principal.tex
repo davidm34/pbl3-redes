@@ -27,7 +27,7 @@
 
 \end{tiny}
 
-\title{Jogo de Cartas Multiplayer Distribuído}
+\title{Jogo de Cartas Multiplayer com Blockchain}
 
 \author{
   \inst{1} Cláudio Daniel Figueredo Peruna \and
@@ -42,21 +42,21 @@
 \maketitle
 
 \begin{abstract}
-This report describes the second delivery of \emph{Attribute War}, in which the previous single-server prototype was re-engineered into a distributed cluster of Go services orchestrated with Docker. The solution combines a token ring for the global card inventory, RESTful matchmaking between servers, and a publish/subscribe bus for TCP clients. Automated stress tests, distributed match simulations, and latency probes demonstrated consistent gameplay, fault recovery, and real-time observability.
+This report describes the third delivery of ``Attribute War'', in which the distributed Go cluster gains a blockchain-backed economy. A private Ethereum node and the PackRegistry smart contract now mediate pack scarcity, NFT-style card ownership, trades, and match audit, while the token ring, RESTful server-to-server APIs, and TCP publish/subscribe bus preserve matchmaking and gameplay. Transaction-receipt checks, pack and cluster stress harnesses, and UUID-tagged cards deliver verifiable stock control, traceable collections, and resilient matches across the Dockerised trio of servers and the blockchain node.
 
 \vspace{\baselineskip}
 
 \noindent
-\textbf{Keywords:} Distributed systems, Token ring, Multiplayer games, Go, Fault tolerance.
+\textbf{Keywords:} Blockchain, Ethereum, Smart contracts, Multiplayer games, Go.
 \end{abstract}
 
 \begin{resumo}
-Este relat\'orio apresenta a segunda entrega do ``Attribute War'', na qual o prot\'otipo centralizado foi reengenheirado em um cluster distribu\'{\i}do de servi\c{c}os em Go orquestrado com Docker. A solu\c{c}\~ao combina um token ring para o estoque global de cartas, matchmaking RESTful entre servidores e um barramento \emph{publish/subscribe} para clientes TCP. Testes automatizados de estresse, partidas distribu\'{\i}das simuladas e sondas de lat\^encia evidenciaram jogabilidade consistente, recupera\c{c}\~ao diante de falhas e observabilidade em tempo real.
+Este relat\'orio apresenta a terceira entrega do ``Attribute War'', na qual o cluster distribu\'{\i}do em Go recebe uma economia ancorada em blockchain. Um n\'o Ethereum privado e o contrato \emph{PackRegistry} passam a intermediar escassez de pacotes, posse de cartas com identificadores \'unicos, trocas e auditoria de partidas, enquanto o token ring, as APIs REST interservidores e o barramento \emph{publish/subscribe} para clientes TCP mant\^em o \emph{matchmaking} e a jogabilidade. Checagens de recibo de transa\c{c}\~ao, testes de estresse de pacotes e de \emph{cluster} e cartas etiquetadas com UUID asseguram controle verific\'avel de estoque, cole\c{c}\~oes rastre\'aveis e partidas resilientes nos tr\^es servidores em cont\^eineres e no n\'o blockchain.
 
 \vspace{\baselineskip}
 
 \noindent
-\textbf{Palavras-chave:} Sistemas distribu\'{\i}dos, Token ring, Jogos multiplayer, Go, Toler\^ancia a falhas.
+\textbf{Palavras-chave:} Blockchain, Ethereum, Contratos inteligentes, Jogos multiplayer, Go.
 
 \end{resumo} 
 
