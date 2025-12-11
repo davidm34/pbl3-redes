@@ -1,0 +1,47 @@
+A metodologia adotada para evoluir o \emph{Attribute War} concentrou-se em transformar o prot\'otipo centralizado em um cluster distribu\'{\i}do operando de forma coordenada. O processo contemplou a provisiona\c{c}\~ao de tr\^es servidores em anel, o desenho da API interservidores para partidas remotas, a distribui\c{c}\~ao controlada de cartas por token e a valida\c{c}\~ao automatizada de cen\'arios concorrentes.
+
+\subsection*{Provisionamento do cluster e par\^ametros operacionais}
+O ciclo inicia pelo empacotamento de cada componente em cont\^aineres Docker, descritos em \texttt{docker-compose.yml}. Tr\^es servi\c{c}os \texttt{server-n} e um servi\c{c}o \texttt{client} compartilham a rede \texttt{game-net}; vari\'aveis de ambiente definem portas TCP/HTTP, a lista ordenada \texttt{ALL\_SERVERS} e o papel de cada inst\^ancia. Essa configura\c{c}\~ao reproduz o padr\~ao recomendado para orquestra\c{c}\~ao determin\'{\i}stica de ambientes distribu\'{\i}dos~\cite{docker-compose-ref}. Durante o \emph{bootstrap}, \texttt{server/main.go} identifica sua posi\c{c}\~ao no anel, deriva o pr\'oximo salto (\texttt{nextServerAddress}) e injeta depend\^encias para o \emph{State Manager}, \emph{Broker} e servi\c{c}o de matchmaking. O primeiro n\'o carrega o token a partir de \texttt{cards.json} e agenda o disparo inicial, enquanto os demais aguardam pela notifica\c{c}\~ao ass\'{\i}ncrona (\texttt{tokenAcquiredChan}).
+
+\subsection*{Ciclo do token ring e distribui\c{c}\~ao de cartas}
+O gerenciamento do estoque global apoia-se em um algoritmo de exclus\~ao m\'utua por token~\cite{tanenbaum2017, cachin2011}. Cada servidor executa \texttt{matchmakingService.Run()}, que bloqueia at\'e receber o token e, em seguida, processa a fila local de jogadores. O token encapsula o \emph{pool} embaralhado, metadados de auditoria e opera\c{c}\~oes \texttt{DrawCards()}, todas protegidas por \texttt{mutex}. Ao formar uma partida, o servi\c{c}o consome dez cartas (cinco por jogador) e persiste as m\~aos por meio de \texttt{CreateLocalMatchWithCards()} ou \texttt{CreateDistributedMatchAsHostWithCards()}. Depois de atender a fila, o token \'e serializado em JSON e enviado via \texttt{POST /api/receive-token} para o pr\'oximo n\'o, garantindo ordem total de acesso e auditoria dos consumos registrada nos \emph{logs}.
+
+\subsection*{Matchmaking distribu\'{\i}do e API interservidores}
+A coopera\c{c}\~ao entre servidores segue o estilo REST, com recursos identificados por URIs previs\'{\i}veis e mensagens JSON padronizadas~\cite{fielding2000, rfc8259}. Quando apenas um jogador est\'a na fila local, o host consulta sequencialmente os demais n\'os por meio de \texttt{GET /api/find-opponent}. Havendo resposta positiva, o host gera um identificador determin\'{\i}stico e solicita a partida distribu\'{\i}da com \texttt{POST /api/request-match}, enviando as cartas do convidado extra\'{\i}das do token. Durante a partida, jogadas remotas percorrem o endpoint \texttt{POST /matches/\{matchID\}/action}; o \emph{handler} aplica \texttt{match.PlayCard()} e garante que apenas um reen encaminhamento ocorra, evitando eco em la\c{c}o. A resolu\c{c}\~ao simult\^anea permanece determin\'{\i}stica porque cada servidor replica a mesma l\'ogica e compartilha as m\~aos geradas pelo token.
+
+\subsection*{Canal cliente-servidor e roteamento publish-subscribe}
+Clientes conectam-se via TCP, autenticam-se e assinam t\'opicos no broker interno \texttt{pubsub.Broker}. O servidor publica mensagens \texttt{MATCH\_FOUND}, \texttt{STATE}, \texttt{ROUND\_RESULT} e eventos de estoque em canais \texttt{player.\textless id\textgreater}. O padr\~ao publish-subscribe desacopla produtores de consumidores e reduz bloqueios entre goroutines, em conson\^ancia com recomenda\c{c}\~oes de sistemas ass\'{\i}ncronos~\cite{eugster2003}. O cliente CLI executa leituras n\~ao bloqueantes, atualiza a interface textual e mede o \emph{Round-Trip Time} com mensagens \texttt{PING/PONG}, cujo intervalo fornece a estimativa de lat\^encia fim-a-fim indicada na F\'ormula~\eqref{eq:rtt}~\cite{topdown8e}. Logs estruturados prefixados por \texttt{[TOKEN]}, \texttt{[MATCHMAKING]} e \texttt{[MATCH]} facilitam a correla\c{c}\~ao entre eventos distribu\'{\i}dos.
+
+\subsection*{Automatiza\c{c}\~ao de testes e monitoramento}
+A valida\c{c}\~ao inclui testes unit\'arios, concorrentes e de integra\c{c}\~ao, executados com \texttt{go test}. O pacote \texttt{tests/packs\_test.go} injeta 20 goroutines concorrentes abrindo pacotes para verificar atomici\-dade, contabilizar sucessos e falhas esperadas (\texttt{ErrOutOfStock}) e auditar o \emph{log}. Para partidas distribu\'{\i}das, scripts descritos em \texttt{docs/TESTANDO\_TOKEN\_COM\_CARTAS.md} instruem a verificar circula\c{c}\~ao do token, entrega de cartas distintas e reabastecimento autom\'atico. A Tabela~\ref{tab:testes-metodologia} consolida os principais casos de teste e evid\^encias observadas.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Casos de teste e evid\^encias de valida\c{c}\~ao do cluster distribu\'{\i}do.}
+  \label{tab:testes-metodologia}
+  \begin{tabular}{@{}p{1.2cm} p{3cm} p{4.2cm} p{4.0cm}@{}}
+    \toprule
+    \textbf{ID} & \textbf{Escopo} & \textbf{Procedimento} & \textbf{Evid\^encia de sucesso} \\
+    \midrule
+    T1 & Token ring & Subir o cluster com \texttt{docker-compose up} & Logs mostram cria\c{c}\~ao inicial, passagem e recep\c{c}\~ao do token em todos os n\'os. \\
+    T2 & Partida local & Conectar dois clientes ao mesmo servidor & Registro de cartas consumidas do token e \texttt{MATCH\_FOUND} para ambos os jogadores. \\
+    T3 & Partida distribu\'{\i}da & Conectar clientes em servidores diferentes & Seq\"u\^encia \texttt{find-opponent} $\rightarrow$ \texttt{request-match} $\rightarrow$ notifica\c{c}\~oes sim\'etricas nas duas inst\^ancias. \\
+    T4 & Concorr\^encia de pacotes & Executar \texttt{go test tests/packs\_test.go} & Nenhum pacote com duplicatas; estoque final zero; auditoria com uma entrada por sucesso. \\
+    T5 & Reabastecimento & For\c{c}ar estoque baixo e abrir partidas sucessivas & Mensagens \texttt{[TOKEN] Pool insuficiente} seguidas de \texttt{Pool reabastecido}. \\
+    T6 & Observabilidade & Acionar \texttt{PING/PONG} durante partidas & RTT medido sem exce\c{c}\~oes e logs correlacionados com eventos de rodada. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection*{Fluxo consolidado}
+O fluxo completo pode ser resumido conforme segue:
+\begin{enumerate}
+  \item Inicializa\c{c}\~ao: o primeiro servidor cria o token, carrega 900 cartas e dispara o ciclo ap\'os 5~s.
+  \item Matchmaking local: servidores com token priorizam partidas entre dois jogadores conectados ao mesmo n\'o.
+  \item Matchmaking distribu\'{\i}do: faltando oponente local, o n\'o percorre \texttt{ALL\_SERVERS} em busca de pares remotos.
+  \item Orquestra\c{c}\~ao de jogadas: cada jogada remota \'e encaminhada via \texttt{ForwardAction} e resolvida de forma determin\'{\i}stica em ambos os lados.
+  \item Observabilidade: logs estruturados e medi\c{c}\~oes de RTT alimentam o diagn\'ostico de lat\^encia e de falhas.
+  \item Ciclo do token: ap\'os processar a fila, o servidor envia o token ao pr\'oximo n\'o, reiniciando o processo.
+\end{enumerate}
+
+Essa metodologia assegura conformidade com os princ\'{\i}pios de sistemas distribu\'{\i}dos, escalabilidade horizontal e confiabilidade operacional exigidos pelo problema 2, sustentada por instrumenta\c{c}\~ao incisiva e por um conjunto de testes reproduc\'{\i}veis.

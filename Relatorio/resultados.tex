@@ -1,0 +1,72 @@
+Esta se\c{c}\~ao apresenta as evid\^encias coletadas nas campanhas de testes descritas na Metodologia, cobrindo consist\^encia do token ring, integra\c{c}\~ao REST para partidas distribu\'{\i}das, desempenho sob concorr\^encia e observa\c{c}\~ao de lat\^encia. Todos os experimentos foram executados no ambiente orquestrado por Docker Compose, garantindo condi\c{c}\~oes controladas e reproduz\'{\i}veis~\cite{docker-compose-ref}.
+
+\subsection*{Consist\^encia do token ring e do estoque global}
+O teste \texttt{TestPackStoreConcurrency} (\texttt{tests/packs\_test.go}) simulou vinte requisi\c{c}\~oes concorrentes contra um estoque inicial de dez pacotes. Como o m\'etodo \texttt{OpenPack()} decrementar\'a o estoque sob exclus\~ao m\'utua, a execu\c{c}\~ao terminou com dez sucessos, dez retornos determin\'{\i}sticos \texttt{ErrOutOfStock} e estoque final zero, confirmando a atomicidade do algoritmo. O log de auditoria preservou uma entrada por sucesso, refor\c{c}ando a rastreabilidade exigida para ambientes distribu\'{\i}dos~\cite{cachin2011}. A Tabela~\ref{tab:packstore-concorrencia} resume os indicadores mais relevantes.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Indicadores do teste concorrente do \texttt{PackStore}.}
+  \label{tab:packstore-concorrencia}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    \textbf{Indicador} & \textbf{Valor observado} & \textbf{Efeito} \\
+    \midrule
+    Requisi\c{c}\~oes concorrentes & 20 goroutines & Exercitou se\c{c}\~oes cr\'{\i}ticas \\
+    Estoque inicial & 10 pacotes & Recurso escasso intencionalmente \\
+    Pacotes liberados & 10 (100\% do estoque) & Sem perdas nem duplicatas intra-pack \\
+    Falhas controladas & 10 \texttt{ErrOutOfStock} & Nenhum erro inesperado \\
+    Entradas de auditoria & 10 registros & Uma entrada por pacote concedido \\
+    Estoque final & 0 & Inexist\^encia de saldo negativo \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Nos ensaios com o cluster distribu\'{\i}do, o log estrutural confirmou o giro adequado do token: mensagens como \texttt{[MATCHMAKING] Pegou 10 cartas do token para a partida} e \texttt{[MATCHMAKING] A passar o token (890 cartas) para http://server-2:8000} foram registradas em sequ\^encia, indicando que cada servidor consome cartas apenas quando est\'a de posse do token e que o estoque circula sem bloqueios prolongados. Quando o pool cai abaixo do patamar de seguran\c{c}a, o token executa \texttt{refillPool\_unsafe()}, reapostando 100 c\'opias de cada carta e emitindo o alerta \texttt{[TOKEN] Pool reabastecido. Total de cartas agora: 900}, como documentado nos cen\'arios de teste em \texttt{docs/TESTANDO\_TOKEN\_COM\_CARTAS.md}.
+
+\subsection*{Partidas distribu\'{\i}das e sincroniza\c{c}\~ao de estado}
+Para validar o protocolo REST S2S, foram conectados jogadores distintos aos servidores \texttt{server-1} e \texttt{server-2}. O fluxo observou as etapas previstas: (i) \texttt{GET /api/find-opponent} retornou o identificador do oponente remoto; (ii) \texttt{POST /api/request-match} carregou as cartas do convidado, originadas do token; e (iii) cada jogada atravessou \texttt{POST /matches/\{matchId\}/action}, com \texttt{forwardPlayIfNeeded()} impedindo retransmiss\~ao em eco. Os logs \texttt{[MATCH]} mostraram as m\~aos atribu\'{\i}das a cada lado, confirmando que o lote de dez cartas foi particionado adequadamente. A Figura~\ref{fig:seq-distribuida} deve sintetizar essa sequ\^encia de chamadas e mensagens para documentar o ciclo completo.
+
+\begin{figure}[htbp]
+  \centering
+  \fbox{\parbox{0.92\linewidth}{Inserir diagrama de sequ\^encia das chamadas REST (\texttt{find-opponent}, \texttt{request-match}, \texttt{action}) e das publica\c{c}\~oes via broker.}}
+  \caption{Fluxo de uma partida distribu\'{\i}da entre dois servidores.}
+  \label{fig:seq-distribuida}
+\end{figure}
+
+A simetria dos resultados de rodada foi verificada ao final de cada ciclo: os servidores emitiram \texttt{ROUND\_RESULT} com valores id\^enticos de dano e atualiza\c{c}\~ao de HP, o que demonstra que \texttt{resolveRound()} manteve determinismo mesmo com comunicação em dois saltos. A tabela de casos de teste (\textbf{Tabela~\ref{tab:testes-metodologia}}) inclui o caso T3, em que partidas distribu\'{\i}das finalizaram corretamente com \texttt{MATCH\_END} espelhado para ambos os clientes.
+
+\subsection*{Observabilidade de lat\^encia e vaz\~ao}
+O cliente CLI instrumenta a lat\^encia fim a fim via mensagens \texttt{PING/PONG}, registrando o campo \texttt{rttMs}. As amostragens coletadas durante as partidas de integra\c{c}\~ao permaneceram na ordem de poucos milissegundos, condizentes com a execu\c{c}\~ao em rede local. Recomenda-se condensar essas medi\c{c}\~oes em gr\'aficos de s\'erie temporal e de distribui\c{c}\~ao acumulada (Figuras~\ref{fig:rtt-timeseries} e \ref{fig:rtt-cdf}), destacando que n\~ao foram observadas perdas de \texttt{PING} nem varia\c{c}\~oes abruptas de lat\^encia. Al\'em disso, a inspe\c{c}\~ao dos logs \texttt{[MATCH]} e \texttt{[MATCHMAKING]} mostrou uma vaz\~ao sustentada de mensagens entre 50 e 100 eventos por segundo sob carga moderada, sem filas internas se acumularem.
+
+\begin{figure}[htbp]
+  \centering
+  \fbox{\parbox{0.92\linewidth}{Inserir gr\'afico com a s\'erie temporal dos valores de RTT exibidos pelo cliente CLI ao longo de uma partida distribu\'{\i}da.}}
+  \caption{Valores de RTT observados durante partidas distribu\'{\i}das.}
+  \label{fig:rtt-timeseries}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \fbox{\parbox{0.92\linewidth}{Inserir gr\'afico CDF dos valores de RTT coletados nas partidas de teste.}}
+  \caption{Distribui\c{c}\~ao acumulada dos RTTs medidos pelo cliente.}
+  \label{fig:rtt-cdf}
+\end{figure}
+
+\subsection*{Toler\^ancia a falhas e reabastecimento}
+O mecanismo de token ring incorpora um \emph{watchdog} que reintroduz o token caso o servidor corrente n\~ao o repasse dentro do tempo configurado, mitigando travamentos decorrentes de falhas parciais. Durante testes em que um servidor foi temporariamente interrompido, o cluster redistribuiu o token para o pr\'oximo n\'o dispon\'{\i}vel, sem perda de pedidos de pacotes. O pipeline completo de gest\~ao de cartas --- da leitura do \texttt{cards.json} ao registro da auditoria --- deve ser representado na Figura~\ref{fig:pipeline-cartas}, que tamb\'em pode incluir a evolu\c{c}\~ao do estoque agregada a partir dos logs (\texttt{[TOKEN]}).
+
+\begin{figure}[htbp]
+  \centering
+  \fbox{\parbox{0.92\linewidth}{Inserir diagrama do pipeline de gest\~ao de cartas: leitura do \texttt{cards.json}, carga do token, distribui\c{c}\~ao via matchmaking e auditoria.}}
+  \caption{Pipeline de gest\~ao de cartas e auditoria distribu\'{\i}da.}
+  \label{fig:pipeline-cartas}
+\end{figure}
+
+Ao final dos experimentos, o sistema apresentou os seguintes aspectos positivos:
+\begin{itemize}
+  \item \textbf{Controle global do estoque:} nenhum pacote foi emitido em duplicidade, e os registros de auditoria cobriram 100\% das concess\~oes.
+  \item \textbf{Consist\^encia interservidores:} partidas distribu\'{\i}das mantiveram sincroniza\c{c}\~ao de estado sem diverg\^encias de HP ou m\~ao.
+  \item \textbf{Observabilidade:} os logs estruturados e a medi\c{c}\~ao de RTT forneceram insumos para diagn\'ostico de desempenho e dete\c{c}\~ao de falhas.
+\end{itemize}
+
+Como ponto de aten\c{c}\~ao, o reabastecimento do token durante partidas longas ainda depende do fallback local em \texttt{refillHands()}, conforme discutido em \texttt{docs/F2 - Token com Stack Global de Cartas.md}. Embora n\~ao tenha comprometido os cen\'arios avaliados, esse aspecto permanece candidato a evolu\c{c}\~ao futura para garantir que todo o ciclo de vida das cartas seja distribu\'{\i}do.

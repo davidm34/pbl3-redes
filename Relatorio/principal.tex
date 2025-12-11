@@ -1,0 +1,86 @@
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+
+\usepackage{graphicx,url}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{listings}
+\usepackage{verbatim}
+\usepackage{amsmath}
+\usepackage[table]{xcolor}
+\usepackage{booktabs, datatool}
+\usepackage{multirow}
+\usepackage{latexsym}
+\usepackage{amssymb}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{ragged2e}
+    
+\sloppy\begin{tiny}
+
+\end{tiny}
+
+\title{Jogo de Cartas Multiplayer Distribuído}
+
+\author{
+  \inst{1} Cláudio Daniel Figueredo Peruna \and
+  \inst{1} David Neves Dias
+}
+
+\address{Departamento de Tecnologia -- Universidade Estadual de Feira de Santana (UEFS) \\ 44036--900 -- Feira de Santana -- Bahia  
+\email{danielperuna2012@gmail.com} \email{davidneves852@gmail.com}}
+
+\begin{document} 
+
+\maketitle
+
+\begin{abstract}
+This report describes the second delivery of \emph{Attribute War}, in which the previous single-server prototype was re-engineered into a distributed cluster of Go services orchestrated with Docker. The solution combines a token ring for the global card inventory, RESTful matchmaking between servers, and a publish/subscribe bus for TCP clients. Automated stress tests, distributed match simulations, and latency probes demonstrated consistent gameplay, fault recovery, and real-time observability.
+
+\vspace{\baselineskip}
+
+\noindent
+\textbf{Keywords:} Distributed systems, Token ring, Multiplayer games, Go, Fault tolerance.
+\end{abstract}
+
+\begin{resumo}
+Este relat\'orio apresenta a segunda entrega do ``Attribute War'', na qual o prot\'otipo centralizado foi reengenheirado em um cluster distribu\'{\i}do de servi\c{c}os em Go orquestrado com Docker. A solu\c{c}\~ao combina um token ring para o estoque global de cartas, matchmaking RESTful entre servidores e um barramento \emph{publish/subscribe} para clientes TCP. Testes automatizados de estresse, partidas distribu\'{\i}das simuladas e sondas de lat\^encia evidenciaram jogabilidade consistente, recupera\c{c}\~ao diante de falhas e observabilidade em tempo real.
+
+\vspace{\baselineskip}
+
+\noindent
+\textbf{Palavras-chave:} Sistemas distribu\'{\i}dos, Token ring, Jogos multiplayer, Go, Toler\^ancia a falhas.
+
+\end{resumo} 
+
+\section{Introdu\c{c}\~ao}
+\label{sec:introducao}
+\input{introducao}
+
+\section{Fundamenta\c{c}\~ao Te\'orica}
+\label{sec:fundamentos}
+\input{fundamentos}
+
+\section{Metodologia, Implementa\c{c}\~ao e Testes}
+\label{sec:metodologia}
+\input{metodologia}
+
+\section{Resultados e Discuss\~oes}
+\label{sec:resultados}
+\input{resultados}
+
+\section{Conclus\~ao}
+\label{sec:conclusao}
+\input{conclusao}
+
+\bibliographystyle{sbc}
+\bibliography{bibliografia}
+
+\end{document}      

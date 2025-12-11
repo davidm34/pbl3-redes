@@ -1,0 +1,40 @@
+Arquiteturas distribu\'{\i}das para jogos \emph{online} exigem coordena\c{c}\~ao entre v\'arios servidores aut\^onomos, mecanismos de consist\^encia compartilhada e protocolos tolerantes a falhas. Em ambientes desse tipo, o estado \'e particionado entre n\'os que cooperam por meio de comunica\c{c}\~ao em rede, e n\~ao h\'a mais um ponto central de decis\~ao~\cite{tanenbaum2017, coulouris2013}. O sistema em estudo segue esse paradigma ao substituir o servidor \'unico do prot\'otipo anterior por um anel de inst\^ancias que executam em cont\^eineres Docker e partilham responsabilidades de matchmaking, media\c{c}\~ao de partidas e distribui\c{c}\~ao de cartas. Esse modelo pressup\~oe \textbf{desacoplamento} funcional, \textbf{sincroniza\c{c}\~ao de estado} e \textbf{mecanismos de recupera\c{c}\~ao} diante de falhas parciais, caracter\'{\i}sticas cl\'assicas de sistemas distribu\'{\i}dos modernos.
+
+O gerenciamento do estoque global de cartas foi estruturado como um algoritmo de token baseado em anel. Algoritmos token-based concedem acesso exclusivo a um recurso compartilhado atrav\'es da posse tempor\'aria de um artefato l\'ogico que percorre os n\'os, evitando conten\c{c}\~ao e garantindo ordem total de requisi\c{c}\~oes~\cite{tanenbaum2017}. Ao encapsular o \emph{pool} de cartas nesse token, o projeto obt\'em atomicidade na retirada de pacotes, elimina duplicidade entre servidores e preserva a equidade mesmo sob tr\'afego concorrente. Estrat\'egias de auditoria e de \emph{watchdog} associadas ao token atendem aos requisitos de confiabilidade descritos na literatura de toler\^ancia a falhas, recompondo o estoque quando um n\'o n\~ao responde dentro do \emph{timeout} configurado~\cite{cachin2011}.
+
+A coopera\c{c}\~ao entre servidores ocorre via API RESTful. No campo de sistemas distribu\'{\i}dos, a arquitetura REST privilegia uniformidade de interface, identifica\c{c}\~ao de recursos por URIs e comunica\c{c}\~ao sem estado, o que simplifica a replica\c{c}\~ao de servi\c{c}os e a expans\~ao horizontal~\cite{fielding2000}. Endpoints como \texttt{/api/find-opponent}, \texttt{/matches/\{id\}/action} e \texttt{/api/request-cards} seguem esse estilo ao expor opera\c{c}\~oes idempotentes e orientadas a recursos, permitindo que novos n\'os ingressem no anel sem depend\^encias impl\'{\i}citas. A representa\c{c}\~ao em JSON permanece alinhada ao \emph{RFC~8259}, garantindo interoperabilidade entre componentes heterog\^eneos~\cite{rfc8259}.
+
+A comunica\c{c}\~ao entre servidores e clientes utiliza um barramento \emph{publish-subscribe} interno ao servidor, que entrega mensagens tipadas a partir de \texttt{topics} espec\'{\i}ficos (\texttt{player.\textless{}id\textgreater{}}) para cada cliente TCP. Modelos pub/sub oferecem desacoplamento temporal e espacial, reduzindo depend\^encias diretas entre produtores e consumidores de eventos~\cite{eugster2003}. Esse padr\~ao facilita a retransmiss\~ao de jogadas em partidas entre servidores e permite aplicar filtros de interesse no n\'ivel da aplica\c{c}\~ao, mantendo o \emph{payload} consistente com o estado observado pelos jogadores.
+
+Manter consist\^encia em face de opera\c{c}\~oes distribu\'{\i}das requer estrat\'egias mistas de sincroniza\c{c}\~ao. O projeto combina consist\^encia forte para opera\c{c}\~oes controladas pelo token (abertura de pacotes) com consist\^encia eventual para informa\c{c}\~oes replicadas entre servidores, como logs e estat\'{\i}sticas de partidas. A abordagem segue pr\'aticas consolidadas em sistemas de grande escala, onde opera\c{c}\~oes cr\'{\i}ticas s\~ao serializadas e demais estados propagam-se de modo ass\'{\i}ncrono sem comprometer a experi\^encia dos usu\'arios~\cite{vogels2009}. Testes de concorr\^encia implementados em \texttt{Go} recorrem a \textbf{goroutines}, canais e \texttt{sync.Mutex} para simular condi\c{c}\~oes de disputa, alinhando-se \`a especifica\c{c}\~ao da biblioteca padr\~ao~\cite{go-tour-concurrency, pkg-sync}.
+
+A media\c{c}\~ao de desempenho utiliza estimativas de lat\^encia fim a fim por meio de sondas \texttt{PING/PONG}. Apesar da arquitetura distribu\'{\i}da, o conceito de \emph{Round-Trip Time} (RTT) continua fundamentado no intervalo entre envio e confirma\c{c}\~ao de uma mensagem, m\'etrica cl\'assica para ajuste de temporizadores e diagn\'ostico de degrada\c{c}\~ao~\cite{topdown8e}. A diferen\c{c}a reside no fato de que agora o RTT reflete tamb\'em a lat\^encia entre servidores, fornecendo insumos para ajustar pol\'{\i}ticas de escalonamento de partidas distribu\'{\i}das. 
+
+O uso de cont\^eineriza\c{c}\~ao com Docker Compose permanece essencial para garantir reprodutibilidade e isolamento dos servi\c{c}os. Na literatura, a composi\c{c}\~ao declarativa de cont\^eineres \'e recomendada para cen\'arios em que diversas inst\^ancias devem ser orquestradas com configura\c{c}\~oes consistentes, favorecendo testes determin\'{\i}sticos de sistemas distribu\'{\i}dos~\cite{docker-compose-ref}. A Tabela~\ref{tab:fund-teorica-pilares} sumariza os pilares te\'oricos aplicados na solu\c{c}\~ao atual e o papel de cada um no projeto.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Pilares te\'oricos empregados na arquitetura distribu\'{\i}da.}
+  \label{tab:fund-teorica-pilares}
+  \begin{tabular}{@{} p{0.24\linewidth} p{0.32\linewidth} p{0.32\linewidth} @{}}
+    \toprule
+    \textbf{Pilar} & \textbf{Refer\^encia cl\'assica} & \textbf{Aplicac\~ao no projeto} \\
+    \midrule
+    Sistemas distribu\'{\i}dos & Tanenbaum e Van Steen~\cite{tanenbaum2017} & Distribui\c{c}\~ao de matchmaking, estado de partidas e token de cartas em m\'ultiplos n\'os. \\
+    Token-based mutual exclusion & Cachin \emph{et al.}~\cite{cachin2011} & Controle do estoque global de cartas via token com auditoria e \emph{timeouts}. \\
+    RESTful APIs & Fielding~\cite{fielding2000} & Exposi\c{c}\~ao de recursos de partidas e sincroniza\c{c}\~ao entre servidores. \\
+    Publish-subscribe & Eugster \emph{et al.}~\cite{eugster2003} & Roteamento de mensagens tipadas para clientes locais e remotos. \\
+    Consist\^encia eventual & Vogels~\cite{vogels2009} & Propaga\c{c}\~ao ass\'{\i}ncrona de estat\'{\i}sticas e registro de partidas. \\
+    Concorr\^encia em Go & The Go Authors~\cite{go-tour-concurrency, pkg-sync} & Execu\c{c}\~ao concorrente de testes, handlers TCP e servi\c{c}os internos. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A \textbf{Figura~\ref{fig:token-ring}} apresenta o anel de servidores, o fluxo do token e os canais REST/PubSub, conectando os pilares te\'oricos aos artefatos implementados e refor\c{c}ando o alinhamento entre fundamenta\c{c}\~ao acad\^emica e solu\c{c}\~ao constru\'{\i}da.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{tec502-modelo-latex-relatorio-pbl/figuras/token-ring.png}
+  \caption{Token ring de servidores com passagem de token (S2S via REST), pub/sub interno e clientes TCP/JSON.}
+  \label{fig:token-ring}
+\end{figure}
