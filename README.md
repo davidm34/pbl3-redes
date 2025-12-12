@@ -28,10 +28,16 @@ O sistema é composto pelos seguintes contêineres Docker orquestrados:
 
 ```mermaid
 graph TD
-    Client[Cliente TCP] -->|JSON| ServerLB[Servidor de Jogo (Go)]
-    ServerLB -->|RPC| Geth[Blockchain Node (Geth)]
-    ServerLB <-->|REST API| ServerPeer[Outros Servidores]
-    Geth -- Smart Contract --> Ledger[(Ledger Imutável)]
+    Client[Cliente TCP]
+    ServerLB[Servidor de Jogo - Go]
+    Geth[Blockchain Node - Geth]
+    ServerPeer[Outros Servidores]
+    Ledger[(Ledger Imutável)]
+    
+    Client -->|JSON| ServerLB
+    ServerLB -->|RPC| Geth
+    ServerLB <-->|REST API| ServerPeer
+    Geth -->|Smart Contract| Ledger
 ```
 
 -----
